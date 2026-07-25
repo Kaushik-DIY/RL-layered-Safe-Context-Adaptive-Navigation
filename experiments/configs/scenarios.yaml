@@ -1,0 +1,74 @@
+# Evaluation scenarios (plan 4.2) and pedestrian model (plan D7).
+# Each scenario: fixed, seeded, 100 episodes/system in 2D; 20 episodes/system in Gazebo.
+
+# Social-force model pedestrians (Helbing-Molnar), implemented in-house (~80 lines, D7).
+social_force_model:
+  relaxation_time: 0.5      # s
+  desired_speed: [0.6, 1.5] # m/s (randomized)
+  repulsion_A: 2.0          # interaction strength
+  repulsion_B: 0.3          # interaction range (m)
+  robot_repulsion_A: 2.5    # pedestrians treat robot as a repulsive agent
+  personal_space: 0.5       # m
+
+episodes_2d: 100
+episodes_gazebo: 20
+seed_base: 1000
+
+scenarios:
+  corridor_passby:
+    id: 1
+    corridor_width: 2.0     # m
+    n_pedestrians: 1        # oncoming
+    tests: "anticipatory slowdown"
+  perpendicular_crossing:
+    id: 2
+    n_pedestrians: 1
+    crossing_timing_jitter: [0.0, 3.0]  # s randomized
+    tests: "yield-vs-proceed judgment"
+  doorway_negotiation:
+    id: 3
+    gap_width: 0.9          # m
+    n_pedestrians: 1        # arriving simultaneously
+    tests: "deadlock / freezing"
+  open_hall:
+    id: 4
+    n_pedestrians: [6, 8]   # free-roaming
+    tests: "throughput under crowd"
+  blind_corner:
+    id: 5
+    reveal_distance: 1.2    # m  occluded pedestrian appears (perception-limited)
+    tests: "filter under worst-case surprise (anticipation cannot help; CBF saves)"
+  interferer:
+    id: 6
+    n_pedestrians: 3        # normal free-roamers alongside the seeker
+    tests: "curious bystander SEEKS the robot (real AMR problem); slowing invites
+            the mob -- context says keep moving, a density rule says stop"
+  t_junction_interferer:
+    id: 7                   # HOLDOUT (industrial track): never in training
+    reveal_distance: 1.2
+    tests: "unseen combo: occluded junction emergence + a robot-seeking bystander"
+
+# Industrial-platform geometry overrides (2026-07 replan; grounding table in
+# robot.yaml / the replan). Same scenario LOGIC, MiR-class arenas: 3.5 m warehouse
+# aisles, longer runs, industrial doorway 1.4 m, bigger hall/crowd. reveal_distance
+# stays 1.2 m -- the POINT is reveal < d_stop(1.5 m/s) ~2.5 m: only anticipatory
+# slowing before the corner can be clean there.
+industrial_geometry:
+  corridor_passby:        {corridor_width: 3.5, length: 13.0}
+  perpendicular_crossing: {goal_x: 12.0}
+  doorway_negotiation:    {gap_width: 1.4, door_x: 6.0, goal_x: 12.0}
+  open_hall:              {x1: 16.0, y_half: 5.0, goal_x: 15.0, n_pedestrians: [8, 10]}
+  blind_corner:           {half_width: 1.75, open_x: 6.0, passage_width: 1.5,
+                           length: 13.0, goal_x: 12.0}
+  interferer:             {x1: 14.0, y_half: 4.0, goal_x: 13.0}
+  t_junction_interferer:  {half_width: 1.75, open_x: 6.0, passage_width: 1.5,
+                           length: 13.0, goal_x: 12.0}
+
+# Systems under test -- the ablation ladder (plan 4.1).
+systems:
+  S1: {desc: "MPC conservative fixed", v_max: 0.13, d_margin: 1.0,  rl: false, cbf: false}
+  S2: {desc: "MPC aggressive fixed",   v_max: 0.26, d_margin: 0.35, rl: false, cbf: false}
+  S3: {desc: "MPC + RL, NO CBF",       rl: true,  cbf: false}
+  S4: {desc: "MPC + RL + CBF (the system)", rl: true, cbf: true}
+  S5: {desc: "MPC + adversarial/random policy + CBF (guarantee stress test)", rl: adversarial, cbf: true}
+  # S6 (optional): Nav2 MPPI default tuning, external reference point.

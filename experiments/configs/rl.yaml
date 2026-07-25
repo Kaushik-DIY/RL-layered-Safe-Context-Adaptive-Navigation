@@ -1,0 +1,99 @@
+# RL context policy (LAYER 3, plan D6). PPO (stable-baselines3), MLP 2x256.
+# The policy is a SUPERVISOR: it only modulates MPC parameters, never controls directly.
+
+algorithm: PPO       # SAC is the documented fallback if PPO plateaus (D6)
+policy: MlpPolicy
+net_arch: [256, 256]
+
+# Decision rate: 2 Hz = every 5 MPC steps (deliberately slow => supervisor, D6).
+decision_every_n_mpc_steps: 5
+
+# Action a = [v_max_cmd, d_margin_cmd]  (a Box). Bounds enforced by clipping.
+action:
+  v_max_cmd:   {low: 0.05, high: 0.26}   # m/s
+  d_margin_cmd: {low: 0.30, high: 1.2}   # m; low == cbf.d_hard (never below floor)
+
+# Observation (dim ~= 3 + 2 + 5*5 + 2 = 32). Identical construction in both sims
+# and from any real tracker. No images / lidar rasters (keeps policy tiny, D6).
+observation:
+  K_nearest_humans: 5          # each: [rel_x, rel_y, rel_vx, rel_vy, ttca], zero-padded, sorted by dist
+  include_goal: true           # goal distance & bearing
+  include_path_curvature: true # curvature ahead
+  include_robot_vel: true      # v, omega
+  include_current_params: true # current (v_max, d_margin) in effect
+
+# Reward, per MPC step, summed over the 5-step decision window (D6).
+# Log EVERY term separately in TensorBoard from day one (classic RL time-sink otherwise).
+reward_weights:
+  w1_progress: 1.0        # + progress along path (dominant)
+  w2_energy: 0.3          # - energy proxy |a|*dt (penalizes stop-start)
+  w3_jerk: 0.1            # - jerk^2 (comfort)
+  # Week-4 audit reward-iteration #1 (plan D6 budgets these), MEASURED: raising
+  # this to 1.0 was tried and was COUNTERPRODUCTIVE -- intervention is a per-step
+  # penalty, so a cautious policy's longer exposure near people accumulates MORE
+  # total penalty than always-max's brief hard corrections (cap-tracking oracle
+  # fell 7.64->4.72 vs always-max 7.73->5.68 on the 5-env battery). 0.5 keeps the
+  # anticipation incentive without punishing careful exposure. Verified by
+  # scripts/check_training_readiness.py; re-run it before changing this again.
+  w4_cbf_intervention: 0.5  # - ||u_safe - u_mpc||  <-- KEY: teaches anticipation
+  w5_protective_stop: 5.0   # - protective-stop step, charged ONLY while the robot
+                            #   is moving (it drove into the field); a human passing
+                            #   a stopped robot is unpreventable and uncharged
+                            #   (week-4 audit; the metric still counts every stop)
+  w6_personal_space: 0.2    # - personal-space intrusion time (d < 0.5 m)
+  w7_success_bonus: 10.0    # + terminal success
+  # w8: ISO stopping-distance breach penalty (max(0,-h) while moving). 0.0 = the
+  # FROZEN TB3 reward (filter catches everything at d_stop 0.25 m). The industrial
+  # platform overrides this to 2.0 (robot.yaml industrial_appendix.reward) because
+  # reveal < d_stop makes corner rushes cause filter-uncatchable violations the
+  # policy must learn to pre-empt -- WITHOUT this the trained industrial policy
+  # rushed every blind corner (measured 2026-07-21: v~1.4 m/s, min_h -0.6, 7/8
+  # seeds breaching), converging to always-max because breaches were reward-free.
+  w8_stopping_violation: 0.0
+  # w9: ISO limited-visibility safe-speed at mapped blind constrictions. Rewards
+  # ANTICIPATORY slowing directly and densely (fires every step d_stop(v) exceeds
+  # the corner sight distance), unlike w8's delayed/probabilistic breach penalty.
+  # 0.0 = frozen TB3 reward; industrial overrides to a positive value (robot.yaml).
+  # Needed because w8-alone left blind corners at 4/8 clean -- the delayed signal +
+  # a (formerly broken) corner observation could not teach corner anticipation.
+  w9_blind_corner_speed: 0.0
+  # w10: anticipatory human-approach margin. Keeps a safety buffer above the hard
+  # stopping barrier when closing on a VISIBLE person, so the robot slows BEFORE it
+  # breaches (the visible-human analogue of w9's corner anticipation). 0.0 = frozen
+  # TB3; industrial overrides (robot.yaml). Added 2026-07-24 after diagnosing that
+  # the residual crowd/interferer violations were all "robot-too-fast toward a
+  # visible human" -- fixable only by an ANTICIPATORY (not w8-reactive) signal.
+  w10_human_approach: 0.0
+# sight distance available AT a blind constriction (stop within this once at the
+# corner) -- the floor on the w9 term. ~ the tracker reveal distance.
+blind_corner_sight_floor: 1.2
+# safety buffer the w10 term keeps above the hard barrier h=0 (slows early).
+human_approach_buffer: 0.5
+time_penalty_per_step: 0.01
+episode_timeout_s: 60.0
+
+# Training regime (D6).
+training:
+  n_envs: 8              # 8-16 vectorized 2D envs
+  total_timesteps: 3000000
+  seeds: [0, 1, 2, 3, 4] # 5 seeds for the final policy
+  checkpoint_every: 100000
+  device: cpu            # tiny MLP; GPU optional
+  ent_coef: 0.0          # PPO entropy bonus. 0 = the FROZEN TB3 setting. The
+                         # industrial retrain passes --ent-coef 0.01 to sustain the
+                         # exploration needed to discover corner-slowing under w8.
+
+curriculum:
+  - {stage: A, world: empty,     pedestrians: 0,   note: "learn to drive fast"}
+  - {stage: B, world: crossings, pedestrians: [1,2], domain_randomization: true}
+  - {stage: C, world: crowd,     pedestrians: [4,8], note: "corridors + doorways"}
+
+# Domain randomization from Stage B (D6).
+domain_randomization:
+  pedestrian_speed: [0.6, 1.5]   # m/s
+  a_brake_frac: 0.2              # +/- 20%
+  human_vel_obs_noise_std: 0.05  # m/s
+  tau_jitter: 0.1                # s (+/-)
+
+export:
+  onnx: true   # export SB3 -> ONNX so evaluation has no torch dependency (D8)

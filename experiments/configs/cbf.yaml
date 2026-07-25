@@ -1,0 +1,40 @@
+# CBF safety filter (LAYER 1, plan D5). THE certifiable layer.
+# CRITICAL INVARIANT: this layer takes NO tunable input from the RL policy.
+# Every value here is a FROZEN constant. The RL policy may request margins ABOVE
+# d_hard (enforced by clipping) but can never weaken this filter.
+
+# Primary constraint (ISO stopping-distance principle), per tracked human i:
+#   h_i(x) = d_i - ( v*tau + v^2 / (2*a_brake) ) - d_hard
+d_hard: 0.30         # m   robot radius + person clearance (NON-NEGOTIABLE floor)
+tau: 0.4             # s   system response time (must match robot.tau_latency)
+a_brake: 0.3         # m/s^2 conservative braking (=60% of physical capability, D5)
+
+# DEVIATION FROM PLAN D5 (week 2, documented): the implemented condition is NOT the
+# linearized one-step DCBF h(x_{k+1}) >= (1-gamma)*h(x_k). That form failed the
+# worst case (full speed, dead-ahead human) because it is blind to the tau = 0.4 s
+# actuation deadtime; the filter instead enforces the EXACT braking cap at the
+# latency-predicted geometry (derivation in core/cbf/cbf_filter.py). gamma is
+# therefore UNUSED by the filter -- kept only to reproduce the linearized variant
+# for the comparison study; the sensitivity study is re-scoped to sigma/a_brake/tau.
+gamma: 0.3           # in (0,1]; UNUSED by the exact-cap filter (see note above)
+
+# Directionality (D5): braking applies to motion TOWARD the human. Replace v with
+#   v * max(0, cos(phi_i)) * sigma,  phi_i = bearing of human i vs robot heading.
+sigma: 1.1           # robustness inflation on closing speed / d_stop
+
+# QP:  min ||u - u_mpc||^2_W  s.t. per-human exact-braking speed caps + u box.
+# Every cap acts on v only, so omega passes through unchanged: "prefer slowing to
+# swerving" (D5) is enforced STRUCTURALLY, not by these weights. W_omega is inert
+# unless a future constraint couples omega (kept for that eventuality).
+qp:
+  solver: proxsuite  # fallback: qpOASES
+  W_v: 10.0          # cost on deviating commanded v
+  W_omega: 1.0       # cost on deviating commanded omega (cheaper)
+
+# Second layer -- protective-field emergency stop (mirrors ESPE logic, D5).
+# If any human enters this radius: command v=0 at max braking, override everything,
+# and LOG the event as a protective stop (a headline metric).
+protective_field:
+  radius: 0.40       # m  (= d_hard + 0.1)
+
+# Robustness: human-velocity estimate noise absorbed by sigma + conservative a_brake.

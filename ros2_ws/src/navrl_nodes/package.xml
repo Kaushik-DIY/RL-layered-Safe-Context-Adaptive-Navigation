@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>navrl_nodes</name>
+  <version>0.0.1</version>
+  <description>
+    Thin ROS 2 wrappers (plan D8) around the sim-agnostic MPC+CBF core package:
+    mpc_node (10 Hz NMPC), cbf_node (10 Hz safety filter), human_tracker_node
+    (abstracted ground-truth tracker). All control logic lives in the ROS-free
+    `core` Python package; these nodes only move messages.
+  </description>
+  <maintainer email="kaushikmitra2310@gmail.com">Kaushik Mitra</maintainer>
+  <license>MIT</license>
+
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>gazebo_msgs</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

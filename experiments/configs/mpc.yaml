@@ -1,0 +1,54 @@
+# MPC tracking controller (LAYER 2, plan D4).
+# Hand-formulated NMPC in CasADi, direct multiple shooting, RK4, solved by IPOPT.
+# Humans enter here as SOFT ellipsoidal potentials; the HARD human guarantee is
+# the CBF layer's job (deliberate division of labor, D4).
+
+horizon_N: 20        # steps  (2.0 s at dt=0.1)
+dt: 0.1              # s      (matches robot.dt; RK4 integration step)
+
+# Build-time NLP capacities (the CasADi problem structure is fixed). Obstacle/human
+# slots beyond the live count are zero-padded far away so their terms go inert (D4).
+capacities:
+  max_static_obstacles: 6
+  max_humans: 5
+
+solver: ipopt        # port to acados (SQP-RTI) only if 10 Hz budget is violated (D3)
+warm_start: true     # always warm-start (risk register: IPOPT speed)
+
+# Cost weights (plan D4). Report ablation on R_delta (smoothness) per plan.
+weights:
+  w_pos: 8.0         # position tracking to goal/carrot
+  w_theta: 0.5       # heading error
+  w_v: 1.0           # track reference speed v_ref
+  R_v: 0.1           # control effort on v
+  R_omega: 0.05      # control effort on omega
+  R_delta_v: 2.0     # smoothness: penalize delta-v  (produces smooth profiles)
+  R_delta_omega: 1.0 # smoothness: penalize delta-omega
+  w_terminal: 20.0   # terminal position cost
+  w_slack: 1000.0    # soft-constraint slack penalty (large)
+  # Week-4 pre-training audit finding (two-stage): (1) at w_human=5 a Gaussian
+  # potential was numerically invisible next to the tracking cost and
+  # d_margin_cmd -- HALF the RL action space -- had zero effect on the plan;
+  # (2) raising the weight exposed that a GAUSSIAN radius is semantically wrong
+  # for an RL-modulated margin: its gradient peaks at d=margin and flattens
+  # inside, so a WIDER margin pushed LESS at close range (non-monotone).
+  # Replaced with an exponential barrier  w_human * exp((d_margin_cmd - d)/decay)
+  # whose push is monotone in the margin at every distance: margin shifts the
+  # barrier, decay fixes its stiffness, and it still vanishes in the open.
+  w_human: 10.0      # barrier height AT d = d_margin_cmd (per stage, per human)
+
+v_ref: 0.26          # m/s desired cruise; capped at runtime by v_max_cmd (RL param)
+
+# Static-obstacle soft clearance: ||pos_k - o_j|| >= r_obs + r_robot - slack
+obstacle:
+  r_robot: 0.22
+
+# Human soft-potential radius default; overridden at runtime by d_margin_cmd (RL param).
+human_potential:
+  default_margin: 0.5   # m
+  decay: 0.15           # m  barrier stiffness b in w*exp((margin - d)/b)
+  constant_velocity_prediction: true   # CV human prediction over the horizon (D4)
+
+# Reference tracking: moving carrot on the global A* path (or straight line in open).
+carrot:
+  lookahead: 0.5     # m along path

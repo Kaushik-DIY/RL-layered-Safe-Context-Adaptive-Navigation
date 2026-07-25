@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "context-adaptive-navigation"
+version = "0.0.1"
+description = "Safe context-adaptive navigation: RL-modulated MPC with an ISO 3691-4-informed CBF safety filter"
+requires-python = ">=3.10,<3.11"
+readme = "README.md"
+
+# Runtime deps are managed via requirements.lock.txt (torch needs the CPU index).
+# This section keeps the `core` package importable as an editable install:
+#   .venv-navrl/bin/pip install -e .
+dependencies = []
+
+[tool.setuptools]
+packages = ["core", "core.common", "core.mpc", "core.cbf", "core.sim2d", "core.rl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

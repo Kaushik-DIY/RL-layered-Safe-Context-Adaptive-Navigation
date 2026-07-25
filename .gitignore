@@ -1,0 +1,53 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Virtual environments (project-local, distinctly named) ---
+.venv-navrl/
+.venv/
+
+# --- Trained models & checkpoints (large binaries; distributed separately) ---
+# NOTE: an inline comment must NOT share a line with a pattern -- git treats the
+# whole line (spaces + text) as the pattern. Keep comments on their own lines.
+*.zip
+*.onnx
+*.pt
+*.pth
+checkpoints/
+logs/
+experiments/models/
+
+# --- TensorBoard runs ---
+runs/
+
+# --- Experiment outputs (regenerable; keep the dir marker + hand-written .md writeups) ---
+experiments/results/*.csv
+experiments/results/*.parquet
+!experiments/results/.gitkeep
+
+# --- Media / run logs (never committed) ---
+*.mp4
+*.gif
+*.png
+*.jpg
+*.jpeg
+*.log
+
+# --- Gazebo / ROS build artifacts ---
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+*.bag
+rosbags/
+
+# --- Excluded from this initial commit (added later, deliberately) ---
+/README.md
+docs/project_summary_CV.md
+
+# --- OS / editor ---
+.DS_Store
+.vscode/
+.idea/

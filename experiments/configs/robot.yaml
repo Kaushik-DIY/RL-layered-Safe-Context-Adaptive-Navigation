@@ -1,0 +1,56 @@
+# Robot & platform parameters (plan D2: TurtleBot3 Waffle, unicycle abstraction).
+# States x = [x, y, theta]; controls u = [v, omega].
+# These are FROZEN physical constants shared by every layer and both simulators.
+
+platform: turtlebot3_waffle
+
+# Kinematic / dynamic limits
+v_max: 0.26          # m/s   top speed (Waffle)
+v_min: 0.0           # m/s   no reverse
+omega_max: 1.82      # rad/s
+omega_min: -1.82     # rad/s
+a_max_physical: 0.5  # m/s^2 hardware capability
+a_max_mpc: 0.2       # m/s^2 tighter bound enforced in MPC for smoothness (D2)
+a_brake: 0.3         # m/s^2 braking decel used in CBF (=60% of physical => robustness, D5)
+
+# Deliberately injected actuation/perception latency (D2). Models perception +
+# safety-PLC reaction time. Makes d_stop ~0.22 m at full speed so the CBF binds.
+tau_latency: 0.4     # s
+
+wheelbase: 0.287     # m
+robot_radius: 0.22   # m  (Waffle footprint radius)
+
+dt: 0.1              # s  control period (10 Hz)
+
+# Industrial-scale platform (plan D2 appendix -> promoted to the headline
+# supervision-headroom study, 2026-07-19 replan). Every value is traceable to real
+# platforms/standards (grounding table in the replan + results write-up):
+#   v_max 1.5      : inside every major AMR envelope (MiR250/600 spec 2.0 m/s max;
+#                    MiR100-class cruise 1.5). The Pareto sweep extends to 2.0.
+#   tau 0.5        : SICK nanoScan3 response 70 ms + safety-PLC cycle + drive/brake
+#                    engagement -- ISO 13855's stopping-time chain (t_det+t_mon+t_mach).
+#   a_brake 0.8    : same 60%-of-capability convention as TB3 (0.3 = 60% of 0.5);
+#                    0.8 ~= 60% of ~1.3 m/s^2 emergency decel, laden-vehicle realistic.
+#   -> d_stop ~2.2-2.5 m at full speed = multi-zone protective-field sizing practice
+#      for ~2 m/s AMRs; ISO 3691-4 requires braking within personnel-detection range.
+# Used via core/common/platform.py: load_platform("industrial"). NEVER for TB3 results.
+industrial_appendix:
+  v_max: 1.5
+  a_brake: 0.8
+  tau_latency: 0.5
+  a_max_physical: 1.2   # emergency-stop capability the 60% convention derives from
+  a_max_mpc: 0.6        # smooth service accel (scaled from TB3's 0.2 with the platform)
+  carrot_lookahead: 2.5 # m; keeps ~1.7 s of reference preview at cruise (TB3: 0.5)
+  action:               # RL/supervisor box at this scale
+    v_max_low: 0.1
+    v_max_high: 1.5     # = v_max
+    d_margin_high: 2.0  # margins may grow toward the stopping envelope (TB3: 1.2)
+  reward:               # platform reward overrides (2026-07 surgery)
+    w8_stopping_violation: 2.0  # penalize ISO breaches (reveal < d_stop => corner
+                                # rushes cause filter-uncatchable violations)
+    w9_blind_corner_speed: 1.5  # dense anticipatory reward: slow to the limited-
+                                # visibility safe speed at mapped blind corners
+                                # (2026-07-24; w8-alone left corners at 4/8)
+    w10_human_approach: 1.5     # dense anticipatory reward: keep a margin above the
+                                # stopping barrier when closing on a VISIBLE person
+                                # (2026-07-24; fixes crowd/interferer robot-too-fast)
