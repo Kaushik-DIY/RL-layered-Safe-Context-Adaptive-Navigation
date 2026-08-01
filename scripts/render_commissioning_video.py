@@ -44,6 +44,7 @@ from core.common.platform import load_platform
 from core.demo import aisle_scene as sc
 from core.demo.industrial_amr import (COMMISSIONED, PROT_PAD, WARN_HALF_W, NORMAL,
                                       STOPPED, WARNING)
+from core.demo.site_zones import APPROACH_MARGIN
 
 OUT = Path("experiments/results")
 
@@ -159,6 +160,17 @@ def draw_commissioning(ax, zones, plat):
     reduced-speed zone per cross-aisle, plus the survey each one rests on. Drawn once,
     statically, because that is exactly what it is -- work done before the robot ever
     moves."""
+    # The approach: a zoned AMR has to be AT the marked limit when it crosses the line,
+    # so it starts shedding speed before it. Drawn lighter because it is not part of what
+    # the integrator marks -- it is what the vehicle has to do about what was marked.
+    a_dec = APPROACH_MARGIN * plat.robot.a_max_mpc
+    lead = (COMMISSIONED ** 2 - zones[0].v ** 2) / (2.0 * a_dec) if zones else 0.0
+    for z in zones:
+        ax.add_patch(Rectangle((z.x0 - lead, -sc.HALF_W), lead, 2 * sc.HALF_W,
+                               fc=C_ENG, alpha=0.05, ec="none", zorder=2))
+        ax.plot([z.x0 - lead, z.x0 - lead], [-sc.HALF_W, sc.HALF_W], color=C_ENG,
+                lw=0.8, alpha=0.45, ls=(0, (2, 3)), zorder=3)
+
     for z in zones:
         ax.add_patch(Rectangle((z.x0, -sc.HALF_W), z.x1 - z.x0, 2 * sc.HALF_W,
                                fc=C_ENG, alpha=0.13, ec="none", zorder=2))
@@ -487,7 +499,10 @@ def main() -> None:
              "one. A SMALLER FIELD MEANS A SLOWER ROBOT, not a safer one.\n"
              "Dashed amber = the warning field, which only the commissioned machine "
              "carries. Red = engineering an integrator had to survey and enter for this "
-             "site. Blue = read off the map the robot already had.",
+             "site. Blue = read off the map the robot already had.\n"
+             "Every machine here is limited to its real acceleration, so speed limits "
+             "are ramped into, never stepped: the pale band before each zone is the "
+             "run-up the commissioned AMR needs to be AT the marked limit on the line.",
              fontsize=8.0, family="monospace", va="bottom", color="#333")
     fig.subplots_adjust(left=0.030, right=0.988, top=0.915, bottom=0.108)
 

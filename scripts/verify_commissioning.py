@@ -55,8 +55,9 @@ from core.cbf.cbf_filter import CbfFilter, d_stop
 from core.common.observation import geometry_features
 from core.common.platform import load_platform
 from core.demo import aisle_scene as sc
-from core.demo.industrial_amr import (COMMISSIONED, DWELL_S, PROT_PAD, WARN_FACTOR,
-                                      WARN_HALF_W, IndustrialAMR)
+from core.demo.industrial_amr import (COMMISSIONED, DWELL_S, PROT_PAD, STOPPED,
+                                      WARN_FACTOR, WARN_HALF_W, IndustrialAMR)
+from core.demo.plant import apply_plant, reachable_cap
 from core.demo.site_zones import mark_zones, zone_cap
 from core.mpc.mpc_controller import MpcController
 from core.rl.supervisor import SupervisorPolicy
@@ -135,6 +136,8 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
     contacts = viol = 0
     min_h = np.inf
     stopped_s = 0.0
+    zone_excess = 0.0            # worst speed over the marked limit, inside a zone
+    peak_decel = 0.0
     reached = None
 
     for k in range(int(horizon_s / dt)):
@@ -161,9 +164,16 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
         if ours and k % plat.rl.decision_every == 0:
             rl_cap, rl_margin = sup.compute(s, goal, humans)
         v_scan = scanner(s, humans, t)[0]
-        v_zone = zone_cap(zones, float(s[0]), COMMISSIONED)
-        v_max_cmd = min([v_scan] + ([rl_cap] if ours and rl_cap is not None
-                                    else [v_zone]))
+        # The marked limit is APPROACHED, not stepped into: a real zoned AMR has the
+        # zone on its map and must already be at the limit when it crosses the line.
+        v_zone = zone_cap(zones, float(s[0]), COMMISSIONED, a_dec=plat.robot.a_max_mpc)
+        v_want = min([v_scan] + ([rl_cap] if ours and rl_cap is not None
+                                 else [v_zone]))
+        # ...and no layer may ask for a speed change the machine cannot make. A
+        # protective stop is exempt: the safety controller cuts the drives directly and
+        # the field is sized on the service brake, not on the planner's comfort limit.
+        v_max_cmd = reachable_cap(v_want, float(s[3]), plat,
+                                  emergency=scanner.state == STOPPED)
         d_margin_cmd = rl_margin if ours else 0.30
 
         to_goal = goal - s[:2]
@@ -180,10 +190,21 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
         if ours:
             u, _ = governor.filter(s, u, humans if len(humans) else None)
         u_prev = u
-        s = np.array([s[0] + dt * u[0] * np.cos(s[2]), s[1] + dt * u[0] * np.sin(s[2]),
-                      s[2] + dt * u[1], u[0], u[1]])
+        # the plant, finally: whatever the stack asked for, the wheels are bounded by
+        # the platform's acceleration. Without this the harness integrated the command
+        # directly and every arm braked at 4-6 m/s^2 on a 1.2 m/s^2 machine.
+        v_app = apply_plant(float(u[0]), float(s[3]), plat)
+        peak_decel = min(peak_decel, (v_app - float(s[3])) / dt)
+        s = np.array([s[0] + dt * v_app * np.cos(s[2]), s[1] + dt * v_app * np.sin(s[2]),
+                      s[2] + dt * u[1], v_app, u[1]])
         if s[3] <= 1e-3:
             stopped_s += dt
+        # did the machine actually honour the limit its own map imposed? A zoned AMR
+        # that only gets down to the limit somewhere past the line is not compliant,
+        # so this is measured rather than assumed.
+        for z in zones:
+            if z.contains(float(s[0])):
+                zone_excess = max(zone_excess, float(s[3]) - z.v)
 
         h = None
         if truth:
@@ -215,7 +236,8 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
                          for i, (wx, wy, wyaw) in enumerate(truth)]))
 
     return dict(t=reached, pstops=scanner.n_stops, stopped_s=stopped_s,
-                contacts=contacts, min_h=float(min_h), viol=viol, viol_s=viol * dt)
+                contacts=contacts, min_h=float(min_h), viol=viol, viol_s=viol * dt,
+                zone_excess=zone_excess, peak_decel=peak_decel)
 
 
 # ------------------------------------------------------------------ what was configured
@@ -275,7 +297,9 @@ def battery(n, plat, scene, sup):
             stopped=float(np.mean([a["stopped_s"] for a in acc])),
             contacts=sum(a["contacts"] > 0 for a in acc),
             min_h=float(np.min([a["min_h"] for a in acc])),
-            violeps=sum(a["viol"] > 0 for a in acc))
+            violeps=sum(a["viol"] > 0 for a in acc),
+            zone_excess=float(np.max([a["zone_excess"] for a in acc])),
+            peak_decel=float(np.min([a["peak_decel"] for a in acc])))
     return res
 
 
@@ -299,13 +323,17 @@ def main() -> None:
     res = battery(n, plat, scene, sup)
 
     hdr = f"{'arm':<14}{'arrived':>8}{'time':>9}{'sd':>6}{'prot.stops':>11}" \
-          f"{'standstill':>11}{'contacts':>9}{'min_h':>8}{'viol_eps':>9}"
+          f"{'standstill':>11}{'contacts':>9}{'min_h':>8}{'viol_eps':>9}{'peak_dec':>10}"
     print(hdr)
     for arm in ARMS:
         a = res[arm]
         print(f"{arm:<14}{a['arrived']:>4}/{a['n']:<3}{a['t']:>9.1f}{a['t_sd']:>6.1f}"
               f"{a['pstops']:>11.2f}{a['stopped']:>11.1f}{a['contacts']:>9}"
-              f"{a['min_h']:>8.2f}{a['violeps']:>9}")
+              f"{a['min_h']:>8.2f}{a['violeps']:>9}{a['peak_decel']:>10.2f}")
+    print(f"\nplant limit {plat.robot.a_max_physical:.2f} m/s^2; no arm may exceed it. "
+          f"Zone approach: the commissioned machine's worst\nspeed excess anywhere "
+          f"inside a marked zone is {res['commissioned']['zone_excess']:+.3f} m/s "
+          f"against the {site_zones(plat)[0].v:.2f} m/s limit.")
 
     s_, i, o = res["scanner"], res["commissioned"], res["ours"]
     cost = 100.0 * (o["t"] - i["t"]) / i["t"]
@@ -322,6 +350,10 @@ def main() -> None:
         ("ours logs no stopping-distance violation", o["violeps"] == 0),
         ("ours is not claimed faster than the commissioned machine", cost >= 0.0),
         ("throughput cost against the commissioned machine <= 20 %", cost <= 20.0),
+        ("no arm brakes harder than the platform can",
+         all(res[a]["peak_decel"] >= -plat.robot.a_max_physical - 1e-6 for a in ARMS)),
+        ("the commissioned machine honours its own marked zones",
+         i["zone_excess"] <= 0.05),
     ]
     print(f"\nthroughput cost of ours vs commissioned : {cost:+.1f} %  "
           f"({i['t']:.1f} s -> {o['t']:.1f} s)")

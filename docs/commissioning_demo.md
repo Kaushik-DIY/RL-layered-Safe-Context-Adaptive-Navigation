@@ -14,14 +14,14 @@ changing anything upstream of the controllers.
 ## The claim
 
 > Equivalent ISO **compliance** with **zero per-site commissioning** — no zone marking,
-> no field-set sizing, no re-validation on layout change — at a throughput cost of about
-> fifteen percent.
+> no field-set sizing, no re-validation on layout change — at a throughput cost of just
+> under twenty percent.
 
 Note the word: **compliance**, not safety-in-general. Measured over 6 randomised
 presentations, ours matches the commissioned machine on the things compliance is made of
 — zero contacts, zero stopping-distance violations, every mission completed — but it runs
-**closer to the limit** (worst barrier margin +0.02 m against +0.81 m) and takes the
-occasional protective stop the commissioned machine does not (0.17 against 0.00 per run).
+**closer to the limit** (worst barrier margin +0.04 m against +0.73 m) and takes the
+occasional protective stop the commissioned machine does not (0.33 against 0.00 per run).
 The closing card states both. Do not let the nominal run, which is clean on every count,
 stand in for the distribution.
 
@@ -108,14 +108,62 @@ Reproduce with `scripts/verify_commissioning.py 6`. The raw log is a regenerable
 and is not tracked, so the numbers live here.
 
 
-| arm | time | protective stops | contacts | worst `min_h` | ISO violations |
-|---|---|---|---|---|---|
-| `scanner` | 29.1 s | 0.00 | 0 | +0.73 m | 0 |
-| `commissioned` | 33.4 s | 0.00 | 0 | +0.81 m | 0 |
-| `ours` | 38.7 s | 0.17 | 0 | +0.02 m | 0 |
+| arm | time | protective stops | contacts | worst `min_h` | ISO violations | peak decel |
+|---|---|---|---|---|---|---|
+| `scanner` | 29.2 s | 0.17 | 0 | +0.49 m | 0 | −1.20 m/s² |
+| `commissioned` | 33.1 s | 0.00 | 0 | +0.73 m | 0 | −0.60 m/s² |
+| `ours` | 39.0 s | 0.33 | 0 | +0.04 m | 0 | −1.20 m/s² |
 
-Ours is **+15.7 %** against the commissioned machine and **+32.9 %** against the zone-less
-scanner machine.
+Ours is **+17.7 %** against the commissioned machine and **+33.2 %** against the zone-less
+scanner machine. The −1.20 m/s² figures are the protective-stop path hitting the platform
+limit exactly, which is what it should do.
+
+## The plant is modelled, and this changed the numbers
+
+Until 2026-08-01 the demo harnesses integrated the controller's output straight into the
+state (`v_new = u[0]`), so speed could change by any amount in one 0.1 s step. Measured,
+**every arm was braking at −4.5 to −5.8 m/s² on a 1.2 m/s² machine** while accelerating
+correctly at +0.6. That is not a rounding artefact — it shortened every mission time, and
+it made a zone boundary look like a step change in speed rather than something a vehicle
+has to decelerate for.
+
+The cause is a known interface defect: `v_max_cmd` enters the MPC as a hard bound
+`v_k <= v_max_cmd` while the same program carries `|dv| <= a_max_mpc*dt`. When the cap
+drops by more than one window's worth of deceleration the constraints contradict, the
+program is infeasible, and the solver's infeasible iterate was being applied as a real
+command.
+
+`core/demo/plant.py` fixes it in two places, and `core/demo/site_zones.py` fixes the
+third:
+
+1. **`reachable_cap`** never asks for a cap the machine could not reach this step, so the
+   program stays feasible. A protective stop is exempt — a real safety controller cuts the
+   drives directly, and the field is sized on the service brake, not on the planner's
+   comfort limit.
+2. **`apply_plant`** bounds whatever finally comes out by `a_max_physical`, so no layer —
+   MPC, CBF, scanner or supervisor — can command a speed change the vehicle cannot make.
+3. **`zone_cap(..., a_dec=...)`** makes the marked limit something the machine *approaches*
+   rather than steps into: outside a zone the cap is `sqrt(vz^2 + 2*a*d)`, so it is at the
+   limit when it crosses the line. A machine that only obeys the limit once it is over the
+   line spends the first stretch of every marked zone above the limit it was marked with.
+
+**The correction cost us, which is the right sign.** Ours went 38.7 → 39.0 s and the
+throughput gap widened from +15.7 % to +17.7 %; the commissioned machine got slightly
+*faster* (33.4 → 33.1 s) because its approach is now smooth instead of an erratic
+infeasible-iterate transient. The scanner arm picked up protective stops it did not have
+before (0.00 → 0.17), because it can no longer shed its warning-tier speed instantly.
+
+Two of the gate's checks now police this directly: no arm may brake harder than the
+platform can, and the commissioned machine must honour its own marked zones. The residual
+zone excess is **+0.041 m/s** (5 %) for about 0.1 m at one boundary, from the MPC lagging
+the cap by ~2 control steps. The approach is planned on 80 % of available deceleration
+(`APPROACH_MARGIN`); lowering it to 0.40 removes the residual entirely but slows the
+baseline by 0.4 s, which would flatter us — so the baseline-favouring value is kept and the
+residual is reported instead of removed.
+
+**Not re-run:** `probe_station.py` and `relax_sweep.py` have their own copies of the
+integration loop and were left alone, so their recorded per-station numbers are not
+directly comparable to these.
 
 ### What the gate checks, and what it deliberately does not
 

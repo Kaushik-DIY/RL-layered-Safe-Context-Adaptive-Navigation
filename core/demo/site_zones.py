@@ -31,6 +31,8 @@ import numpy as np
 
 from core.cbf.cbf_filter import d_stop
 
+APPROACH_MARGIN = 0.80    # fraction of the available deceleration the approach plans on
+
 
 class SpeedZone:
     """One marked zone on the site map: [x0, x1] along the aisle, capped at `v`."""
@@ -54,15 +56,53 @@ def zone_speed(plat, reveal: float, v_cap: float) -> float:
 
 
 def mark_zones(mouth_x, plat, reveal: float, v_cap: float, mouth_w: float):
-    """The integrator's output: one reduced-speed zone per mapped cross-aisle."""
+    """The integrator's output: one reduced-speed zone per mapped cross-aisle.
+
+    The zone has to START at least a stopping distance before the mouth, or the machine
+    is inside the zone but still unable to stop for somebody emerging from it. At the
+    zone speed that stopping distance IS the sight line, by the construction of
+    `zone_speed` above -- so the lead is simply the surveyed reveal, which is also the
+    quantity the integrator measured to get here.
+
+    Note this is where the zone is MARKED, not where the machine starts slowing. Getting
+    down to the zone speed by the time it crosses the line is the vehicle's problem, and
+    `zone_cap` below is what makes it solve it.
+    """
     vz = zone_speed(plat, reveal, v_cap)
     c, r = plat.cbf, plat.robot
-    lead = c.tau * v_cap + (v_cap ** 2 - vz ** 2) / (2.0 * c.a_brake)
     tail = mouth_w / 2.0 + r.robot_radius + c.d_hard
-    return [SpeedZone(x - mouth_w / 2.0 - lead, x + tail, vz, f"J-{i + 1:02d}")
+    return [SpeedZone(x - mouth_w / 2.0 - reveal, x + tail, vz, f"J-{i + 1:02d}")
             for i, x in enumerate(sorted(mouth_x))]
 
 
-def zone_cap(zones, x: float, v_cap: float) -> float:
-    """Speed limit the marked map imposes at position `x`."""
-    return min([v_cap] + [z.v for z in zones if z.contains(x)])
+def zone_cap(zones, x: float, v_cap: float, a_dec: float | None = None) -> float:
+    """Speed limit the marked map imposes at position `x`.
+
+    With `a_dec` given, the limit is APPROACHED rather than stepped into: outside a zone
+    the cap is the fastest speed from which the machine can still be down to the zone
+    speed by the boundary, `sqrt(vz^2 + 2*a_dec*distance)`. A machine that only obeyed
+    the limit once it was over the line would spend the first stretch of every marked
+    zone above the limit it was marked with, which is not a configuration that passes
+    commissioning -- and it would make a zone boundary look like a step change in speed
+    rather than something a vehicle has to decelerate for.
+
+    Without `a_dec` the old step behaviour is kept, so the difference the look-ahead
+    makes can be measured rather than asserted.
+    """
+    out = v_cap
+    for z in zones:
+        if x > z.x1:
+            continue
+        if x >= z.x0:
+            out = min(out, z.v)
+        elif a_dec:
+            # Planned against a fraction of the available deceleration. Sizing the
+            # approach on the full rate leaves nothing for discretisation or tracking
+            # error, and measured that way the machine was still 0.09 m/s over the
+            # limit 0.14 m INSIDE the zone -- compliant everywhere except the one place
+            # the zone exists for. Real approach controllers carry the same margin.
+            out = min(out, float(np.sqrt(z.v ** 2 + 2.0 * APPROACH_MARGIN * a_dec
+                                         * (z.x0 - x))))
+        elif z.contains(x):
+            out = min(out, z.v)
+    return float(out)
