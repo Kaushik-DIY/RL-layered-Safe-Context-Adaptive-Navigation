@@ -54,7 +54,8 @@ class Station:
 def build(stations, goal_x):
     """-> dict(walls, posts, cues, goal). Geometry is derived from the stations so the
     drawn scene and the planner's obstacle set can never disagree."""
-    mouths = [s.x for s in stations if s.kind in ("blind_cross", "crossing")]
+    mouths = [s.x for s in stations
+              if s.kind in ("blind_cross", "crossing", "blind_clear")]
     walls, posts, cues = [], [], []
 
     # main aisle walls, broken by each side-aisle mouth
@@ -83,7 +84,15 @@ def _station_cues(st, posts):
     x, kw = st.x, st.kw
 
     if st.kind == "empty_corner":
-        return []                                        # geometry only, nobody there
+        return []                                        # no geometry, nobody there
+
+    if st.kind == "blind_clear":
+        # A real blind cross-aisle -- mouth, jambs, no sight line -- with NOBODY in it.
+        # `build` gives it the same geometry as `blind_cross`; the difference is only
+        # that no worker is staged. It is the control case for the commissioning claim:
+        # the site feature is identical, so anything either machine does here is a
+        # response to the LAYOUT and not to a person.
+        return []
 
     if st.kind == "blind_cross":
         # worker descends the side aisle and crosses the robot's lane
@@ -195,8 +204,11 @@ def walk_path(cue, t):
 
 
 def staged_pose(cue):
-    x, y = cue["path"][0]
-    return x, y, -np.pi / 2.0
+    """Where a worker waits before his cue fires, facing the way he is about to walk.
+    (Callers that only want the position ignore the yaw; it exists so a rendered worker
+    does not stand facing backwards and then snap round when he sets off.)"""
+    (x, y), (nx, ny) = cue["path"][0], cue["path"][1]
+    return x, y, float(np.arctan2(ny - y, nx - x))
 
 
 def visible(cue, wx, wy, robot_xy):

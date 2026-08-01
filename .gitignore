@@ -26,6 +26,7 @@ runs/
 # --- Experiment outputs (regenerable; keep the dir marker + hand-written .md writeups) ---
 experiments/results/*.csv
 experiments/results/*.parquet
+experiments/results/*.pkl
 !experiments/results/.gitkeep
 
 # --- Media / run logs (never committed) ---
