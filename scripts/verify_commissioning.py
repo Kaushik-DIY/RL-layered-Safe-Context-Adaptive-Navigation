@@ -58,6 +58,7 @@ from core.demo import aisle_scene as sc
 from core.demo.industrial_amr import (COMMISSIONED, DWELL_S, PROT_PAD, STOPPED,
                                       WARN_FACTOR, WARN_HALF_W, IndustrialAMR)
 from core.demo.plant import apply_plant, reachable_cap
+from core.demo.sight_limit import floor_speed
 from core.demo.site_zones import mark_zones, zone_cap
 from core.mpc.mpc_controller import MpcController
 from core.rl.supervisor import SupervisorPolicy
@@ -137,11 +138,13 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
     min_h = np.inf
     stopped_s = 0.0
     zone_excess = 0.0            # worst speed over the marked limit, inside a zone
+    floor_steps = n_steps = 0    # how often the geometry floor, not the policy, set the cap
     peak_decel = 0.0
     reached = None
 
     for k in range(int(horizon_s / dt)):
         t = k * dt
+        n_steps += 1
         rows, truth = [], []
         for i, cue in enumerate(cues):
             if fired[i] is None:
@@ -163,6 +166,17 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
 
         if ours and k % plat.rl.decision_every == 0:
             rl_cap, rl_margin = sup.compute(s, goal, humans)
+        # The policy was trained against the strict governor and is systematically slow
+        # under the relaxed one, so it is floored at the speed its own map already
+        # justifies: fast enough to stop inside what it can see, and no faster than the
+        # strict barrier allows against anyone tracked. A floor, never a ceiling.
+        v_floor = None
+        if ours:
+            v_floor = floor_speed(s, walls, posts, plat, COMMISSIONED,
+                                  humans=humans, scorer=scorer)
+            if v_floor > (rl_cap if rl_cap is not None else 0.0) + 1e-9:
+                floor_steps += 1
+            rl_cap = max(rl_cap, v_floor) if rl_cap is not None else v_floor
         v_scan = scanner(s, humans, t)[0]
         # The marked limit is APPROACHED, not stepped into: a real zoned AMR has the
         # zone on its map and must already be at the limit when it crosses the line.
@@ -226,6 +240,7 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
             record.append(dict(
                 t=t, x=float(s[0]), y=float(s[1]), yaw=float(s[2]), v=float(s[3]),
                 cap=float(v_max_cmd), rl_cap=None if rl_cap is None else float(rl_cap),
+                v_floor=None if v_floor is None else float(v_floor),
                 scan_cap=float(v_scan), state=scanner.state,
                 zone_cap=None if not zones else float(v_zone),
                 prot=float(scanner.protective_len(v_ref)),
@@ -237,7 +252,8 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
 
     return dict(t=reached, pstops=scanner.n_stops, stopped_s=stopped_s,
                 contacts=contacts, min_h=float(min_h), viol=viol, viol_s=viol * dt,
-                zone_excess=zone_excess, peak_decel=peak_decel)
+                zone_excess=zone_excess, peak_decel=peak_decel,
+                floor_frac=floor_steps / max(1, n_steps))
 
 
 # ------------------------------------------------------------------ what was configured
@@ -299,7 +315,8 @@ def battery(n, plat, scene, sup):
             min_h=float(np.min([a["min_h"] for a in acc])),
             violeps=sum(a["viol"] > 0 for a in acc),
             zone_excess=float(np.max([a["zone_excess"] for a in acc])),
-            peak_decel=float(np.min([a["peak_decel"] for a in acc])))
+            peak_decel=float(np.min([a["peak_decel"] for a in acc])),
+            floor_frac=float(np.mean([a["floor_frac"] for a in acc])))
     return res
 
 
@@ -330,7 +347,10 @@ def main() -> None:
         print(f"{arm:<14}{a['arrived']:>4}/{a['n']:<3}{a['t']:>9.1f}{a['t_sd']:>6.1f}"
               f"{a['pstops']:>11.2f}{a['stopped']:>11.1f}{a['contacts']:>9}"
               f"{a['min_h']:>8.2f}{a['violeps']:>9}{a['peak_decel']:>10.2f}")
-    print(f"\nplant limit {plat.robot.a_max_physical:.2f} m/s^2; no arm may exceed it. "
+    print(f"\nthe geometry floor set ours' cap on "
+          f"{100 * res['ours']['floor_frac']:.0f} % of steps; the learned policy set it "
+          f"on the other {100 * (1 - res['ours']['floor_frac']):.0f} %.")
+    print(f"plant limit {plat.robot.a_max_physical:.2f} m/s^2; no arm may exceed it. "
           f"Zone approach: the commissioned machine's worst\nspeed excess anywhere "
           f"inside a marked zone is {res['commissioned']['zone_excess']:+.3f} m/s "
           f"against the {site_zones(plat)[0].v:.2f} m/s limit.")

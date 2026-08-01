@@ -13,16 +13,15 @@ changing anything upstream of the controllers.
 
 ## The claim
 
-> Equivalent ISO **compliance** with **zero per-site commissioning** — no zone marking,
-> no field-set sizing, no re-validation on layout change — at a throughput cost of just
-> under twenty percent.
+> The same transport time and the same ISO **compliance** with **zero per-site
+> commissioning** — no zone marking, no field-set sizing, no re-validation on layout
+> change.
 
 Note the word: **compliance**, not safety-in-general. Measured over 6 randomised
-presentations, ours matches the commissioned machine on the things compliance is made of
-— zero contacts, zero stopping-distance violations, every mission completed — but it runs
-**closer to the limit** (worst barrier margin +0.04 m against +0.73 m) and takes the
-occasional protective stop the commissioned machine does not (0.33 against 0.00 per run).
-The closing card states both. Do not let the nominal run, which is clean on every count,
+presentations, ours matches the commissioned machine on every count compliance is made of
+— zero contacts, zero stopping-distance violations, zero protective stops, every mission
+completed, 33.2 s against 33.1 s. It does run **closer to the limit** (worst barrier
+margin +0.37 m against +0.73 m), and the closing card says so. Do not let the nominal run
 stand in for the distribution.
 
 Not "safer", and not "faster". Both of those were tried and both are dead:
@@ -70,6 +69,65 @@ without it if something else supplies the anticipation. That is precisely the cl
 tested, and it is tested honestly: ours keeps the mandatory tier and is marked on the strict
 barrier, not on its own relaxed governor.
 
+### The supervisor is floored at the speed its own map justifies
+
+Measured, the policy was **systematically slower than the geometry required**: 0.57 m/s
+inside a blind cross-aisle where 0.79 was provably safe, 0.74 m/s with the nearest corner
+6.7 m away, 0.64 m/s on a stretch with no corner at all. Over the 31 m route it spent
+**15.2 of 37.7 s below 0.95 m/s with no human tracked at all**, where the barrier margin
+was 6–16 m. That was the entire throughput gap, and none of it was buying safety.
+
+The cause is a calibration mismatch, not a bad policy: it was trained against the
+**strict** governor (σ 1.1, service brake 0.8) on a 1.5 m/s platform, and is deployed
+against the **relaxed** governor (σ 1.0, physical brake 1.2) at 1.2 m/s. The same
+clearance supports a higher speed under the chain it now runs on, so every cap it emits is
+low by construction. Retraining would fix it properly; `core/demo/sight_limit.py` fixes it
+without invalidating the trained artefact.
+
+The floor is the same argument the hand-marked zone rests on, evaluated continuously
+instead of surveyed once:
+
+> the machine may travel at whatever speed it can still stop from inside the distance it
+> can actually see
+
+with sight distance taken from `post_ahead` — the map feature the policy already
+consumes — and the protective field required to clear that sight line by one `d_hard`.
+That clearance matters: at *exactly* the sight-limited speed the stopping distance equals
+the sight line and the field IS the stopping distance, so somebody stepping out at the
+edge of vision lands precisely on the field boundary and trips a protective stop. A
+fielded AMR escapes this because its warning tier has already pre-slowed it; ours carries
+no warning tier by design, so the clearance has to come from the speed. Measured over 3
+presentations:
+
+| clearance | time | protective stops |
+|---|---|---|
+| 0.00 m | 34.1 s | 1.00 |
+| 0.15 m | 34.0 s | 0.67 |
+| **0.30 m (= `d_hard`)** | **33.2 s** | **0.00** |
+| 0.45 m | 34.0 s | 0.00 |
+
+The derived value is also the quick one, because a protective stop costs a 3 s dwell.
+
+**Three properties keep this honest:**
+
+* **It is a floor, never a ceiling.** `cap = max(policy, floor)`. The policy stays free to
+  go slower for anything the geometry does not express.
+* **It cannot relax into a breach.** The floor is clamped by the STRICT barrier against
+  every tracked human before it is applied — the same barrier the result is scored on. In
+  practice this pulls the floor *below* the policy near a worker, so the relaxation never
+  speeds the machine up around a person.
+* **The split is measured, not assumed.** The floor sets the cap on **12 % of steps** — the
+  empty cross-aisle and open aisle, where geometry is the only input. The learned policy
+  sets it on the other 88 %, including everywhere a human is involved. The gate prints
+  this every run.
+
+**One machine constant is required** and the write-up must not skip it:
+`SIGHT_PAST_OCCLUDER`, how far beyond a mapped occluder the sensors resolve a person. That
+is a property of the sensor and its mounting, fixed for a vehicle across every site it is
+ever deployed to — whereas the commissioned machine needs that *same physical quantity
+surveyed per junction*, and then a zone speed, extent and polygon derived and validated
+from it. The distinction is real, but it is not nothing, and the closing card states it.
+
 ## The route
 
 Three cross-aisles at 8.5 m centres, then a clear run-out to the pick station
@@ -112,11 +170,10 @@ and is not tracked, so the numbers live here.
 |---|---|---|---|---|---|---|
 | `scanner` | 29.2 s | 0.17 | 0 | +0.49 m | 0 | −1.20 m/s² |
 | `commissioned` | 33.1 s | 0.00 | 0 | +0.73 m | 0 | −0.60 m/s² |
-| `ours` | 39.0 s | 0.33 | 0 | +0.04 m | 0 | −1.20 m/s² |
+| `ours` | 33.2 s | 0.00 | 0 | +0.37 m | 0 | −0.60 m/s² |
 
-Ours is **+17.7 %** against the commissioned machine and **+33.2 %** against the zone-less
-scanner machine. The −1.20 m/s² figures are the protective-stop path hitting the platform
-limit exactly, which is what it should do.
+Ours is **+0.4 %** against the commissioned machine and **+13.7 %** against the zone-less
+scanner machine, with the run-to-run spread down to 0.1 s.
 
 ## The plant is modelled, and this changed the numbers
 

@@ -342,7 +342,10 @@ class Panel:
                 self.sight.set_data([x, x + pa * np.cos(yaw)],
                                     [y, y + pa * np.sin(yaw)])
                 self.sight_txt.set_position((x + pa / 2 * np.cos(yaw), y - 1.20))
-                self.sight_txt.set_text(f"post_ahead {pa:.2f} m  (from the map)")
+                fl = f.get("v_floor")
+                extra = f"   ->  {fl:.2f} m/s" if fl is not None else ""
+                self.sight_txt.set_text(
+                    f"post_ahead {pa:.2f} m  (from the map){extra}")
             else:
                 self.sight.set_data([], [])
                 self.sight_txt.set_text("")
@@ -555,8 +558,8 @@ def _summary_card(fig, arrive, summary, batt, n_params):
     L, CA, CC, CN = 0.062, 0.470, 0.640, 0.735
     art = [fig.add_artist(Rectangle((0, 0), 1, 1, transform=fig.transFigure, fc="white",
                                     ec="none", zorder=40))]
-    art.append(fig.text(L, 0.880, "Same compliance. No commissioning.",
-                        fontsize=31, weight="bold", color="#22252a", zorder=41))
+    art.append(fig.text(L, 0.880, "Same time. Same compliance. No commissioning.",
+                        fontsize=29, weight="bold", color="#22252a", zorder=41))
     art.append(fig.text(L, 0.824,
                         "31 m transport run, three cross-aisles, identical workers and "
                         "identical presentation timing",
@@ -582,7 +585,8 @@ def _summary_card(fig, arrive, summary, batt, n_params):
         ("barrier margin, worst over the run",
          f"{summary['commissioned']['min_h']:+.2f} m",
          f"{summary['ours']['min_h']:+.2f} m", "both clear of the limit"),
-        ("mission time", f"{ti:.1f} s", f"{to:.1f} s", f"ours is {cost:.0f} % slower"),
+        ("mission time", f"{ti:.1f} s", f"{to:.1f} s",
+         "the same run" if abs(cost) < 3.0 else f"ours is {cost:.0f} % slower"),
     ]
     for i, (label, a, c, note) in enumerate(rows):
         yy = 0.652 - i * 0.076
@@ -594,32 +598,35 @@ def _summary_card(fig, arrive, summary, batt, n_params):
         art.append(fig.text(CN, yy, note, fontsize=11, color="#6b7079", zorder=41))
 
     art.append(fig.text(
-        L, 0.268,
+        L, 0.258,
         f"Over {bo['n']} randomised presentations, not just the run above: "
-        f"{bi['t']:.1f} s against {bo['t']:.1f} s ({batt_cost:.0f} % slower), zero "
-        f"contacts and zero ISO violations on both,\n"
-        f"but ours averages {bo['pstops']:.2f} protective stops against "
-        f"{bi['pstops']:.2f} and its worst barrier margin falls to "
-        f"{bo['min_h']:+.2f} m. It is closer to the limit than the machine above.",
-        fontsize=11, color="#3c4048", linespacing=1.7, zorder=41))
+        f"{bi['t']:.1f} s against {bo['t']:.1f} s ({batt_cost:+.1f} %), zero contacts, "
+        f"zero ISO violations and\n"
+        f"{bo['pstops']:.2f} against {bi['pstops']:.2f} protective stops. Ours does run "
+        f"closer to the limit -- worst barrier margin {bo['min_h']:+.2f} m against "
+        f"{bi['min_h']:+.2f} m -- but it never crosses it.",
+        fontsize=11, color="#3c4048", linespacing=1.7, va="top", zorder=41))
     art.append(fig.text(
-        L, 0.180,
-        f"The trade: about {abs(batt_cost):.0f} % of throughput against every per-site "
-        "speed zone, field set and re-validation the machine above needs. Industry "
-        "context for what\nthat engineering costs: roughly 30 % of equipment spend goes "
-        "to solution design and deployment, at 8-14 weeks contract-to-production.",
-        fontsize=11.5, color="#555", linespacing=1.7, zorder=41))
+        L, 0.188,
+        "The trade: the same transport time, against every per-site speed zone, field "
+        "set and re-validation the machine above needs. Industry context for what\n"
+        "that engineering costs: roughly 30 % of equipment spend goes to solution design "
+        "and deployment, at 8-14 weeks contract-to-production.",
+        fontsize=11.5, color="#555", linespacing=1.7, va="top", zorder=41))
     scan_cost = 100.0 * (bo["t"] - batt["scanner"]["t"]) / batt["scanner"]["t"]
     art.append(fig.text(
-        L, 0.098,
-        "Honest limits, measured on this route only. Strip the marked zones off the "
-        f"machine above and it runs {batt['scanner']['t']:.1f} s, against which ours is "
-        f"{scan_cost:.0f} % slower -\nbut then nothing is anticipating the corner its "
-        "scanner cannot see round. The `crowd` station, where ours is beaten outright, "
-        "is not on this route.\n"
-        "2D simulation, same control stack as the Gazebo build. Cost and lead-time "
-        "figures are industry sources, not measurements from this work.",
-        fontsize=9.5, color="#8a919b", linespacing=1.7, zorder=41))
+        L, 0.118,
+        "Honest limits, measured on this route only. Ours needs one MACHINE constant -- "
+        "how far its sensors see past a mapped occluder -- plus the map it already has; "
+        "the machine above needs\nthat same quantity surveyed per junction, then a zone "
+        "speed, extent and polygon derived and validated from it. Strip its zones off "
+        f"and it runs {batt['scanner']['t']:.1f} s, {scan_cost:.0f} % quicker than ours, "
+        "but with\nnothing anticipating the corner its scanner cannot see round. The "
+        "`crowd` station, where ours is beaten outright, is not on this route. "
+        "2D simulation, same control stack as the Gazebo build.\n"
+        "Cost and lead-time figures are industry sources, not measurements from this "
+        "work.",
+        fontsize=9.5, color="#8a919b", linespacing=1.7, va="top", zorder=41))
     for a in art:
         a.set_visible(False)
     return art
