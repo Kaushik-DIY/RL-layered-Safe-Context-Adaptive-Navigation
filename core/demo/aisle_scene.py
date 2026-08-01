@@ -61,24 +61,44 @@ def build(stations, goal_x, half_w=HALF_W):
     its own, and every cue carries the value it was built with so occlusion stays
     consistent with the geometry rather than with a module constant.
     """
-    mouths = [s.x for s in stations
-              if s.kind in ("blind_cross", "crossing", "blind_clear")]
+    # Which side of the main aisle each opening is on. A cross-aisle is not always on
+    # the north side, and WHICH side it is on decides whether the robot has anywhere
+    # safe to step when it meets somebody -- so the scene has to carry it.
+    north, south = [], []
+    for st in stations:
+        if st.kind in ("blind_cross", "crossing", "blind_clear"):
+            (north if st.kw.get("side", 1.0) > 0 else south).append(st.x)
+        elif st.kind == "junction":
+            north.append(st.x)
+            south.append(st.x)          # a real 4-way: the crossing worker needs a way out
     walls, posts, cues = [], [], []
+    depth = max(AISLE_TOP, half_w + 2.25) - half_w
 
-    # main aisle walls, broken by each side-aisle mouth
-    top = max(AISLE_TOP, half_w + 2.25)
-    edges = [X_MIN]
-    for mx in sorted(mouths):
-        edges += [mx - MOUTH / 2, mx + MOUTH / 2]
-    edges.append(goal_x + 1.5)
-    for i in range(0, len(edges) - 1, 2):
-        walls.append([edges[i], half_w, edges[i + 1], half_w])
-    walls.append([X_MIN, -half_w, goal_x + 1.5, -half_w])
-    for mx in mouths:                                   # side-aisle side walls
-        walls.append([mx - MOUTH / 2, half_w, mx - MOUTH / 2, top])
-        walls.append([mx + MOUTH / 2, half_w, mx + MOUTH / 2, top])
-        posts.append([mx - MOUTH / 2, half_w, 0.12])
-        posts.append([mx + MOUTH / 2, half_w, 0.12])
+    # Order matters and is deliberate: every horizontal run first, then the jambs, then
+    # the posts. `_obstacles()` keeps the N nearest and ties break on list order, so a
+    # reshuffle here moves results by a timestep for no reason. This ordering is the one
+    # the commissioning route was measured with.
+    def _runs(mouths, y_face):
+        edges = [X_MIN]
+        for mx in sorted(mouths):
+            edges += [mx - MOUTH / 2, mx + MOUTH / 2]
+        edges.append(goal_x + 1.5)
+        for i in range(0, len(edges) - 1, 2):
+            walls.append([edges[i], y_face, edges[i + 1], y_face])
+
+    def _jambs(mouths, y_face, out):
+        for mx in mouths:
+            for e in (mx - MOUTH / 2, mx + MOUTH / 2):
+                walls.append([e, y_face, e, y_face + out * depth])
+
+    _runs(north, half_w)
+    _runs(south, -half_w)
+    _jambs(north, half_w, +1.0)
+    _jambs(south, -half_w, -1.0)
+    for y_face, mouths in ((half_w, north), (-half_w, south)):
+        for mx in mouths:
+            for e in (mx - MOUTH / 2, mx + MOUTH / 2):
+                posts.append([e, y_face, 0.12])
 
     for st in stations:
         cues.extend(_station_cues(st, posts, half_w))
@@ -105,10 +125,14 @@ def _station_cues(st, posts, half_w=HALF_W):
         # response to the LAYOUT and not to a person.
         return []
 
-    if st.kind == "blind_cross":
-        # worker descends the side aisle and crosses the robot's lane
+    if st.kind in ("blind_cross", "junction"):
+        # Worker descends the side aisle and crosses the robot's lane. On a `junction`
+        # there is an opening on BOTH sides, so he walks out of a real gap instead of
+        # appearing to step through the racking.
+        side = kw.get("side", 1.0)
+        out = -HW - (1.3 if st.kind == "junction" else 2.5)
         return [dict(name=f"cross@{x:.0f}", lane_x=x, speed=kw.get("speed", 1.40),
-                     path=[(x, HW + 1.3), (x, -HW - 2.5)],
+                     path=[(x, side * (HW + 1.3)), (x, side * out)],
                      present_time=kw.get("present_time", 1.9), occludes=True)]
 
     if st.kind == "crossing":
@@ -136,10 +160,14 @@ def _station_cues(st, posts, half_w=HALF_W):
         # footprint plus keep-out -- so the worker walks a realistic 1.0 m off centre and
         # there is a genuine passing lane for the AMR to use.
         lane = kw.get("lane", 1.00)
+        lead = kw.get("lead", 5.5)
         return [dict(name=f"head@{x:.0f}", lane_x=x, speed=kw.get("speed", 1.25),
-                     path=[(x + kw.get("lead", 5.5), lane),
-                           (x - kw.get("trail", 8.0), lane)],
-                     present_time=kw.get("present_time", 3.0), occludes=False)]
+                     path=[(x + lead, lane), (x - kw.get("trail", 8.0), lane)],
+                     # He never crosses y = 0, so the generic arc-to-lane measure runs
+                     # the WHOLE path and the cue fires almost immediately. What matters
+                     # is when he reaches the meeting point, which is exactly `lead`.
+                     arc_to_lane=lead,
+                     present_time=kw.get("present_time", 0.0), occludes=False)]
 
     if st.kind == "slow_leader":
         # A picker walking DOWN the aisle ahead of the robot, slower than it. This is the
@@ -178,6 +206,8 @@ def _station_cues(st, posts, half_w=HALF_W):
 # ------------------------------------------------------------------ cue helpers
 def path_len_to_lane(cue):
     """Arc length walked until the worker first reaches the robot's lane (y = 0)."""
+    if "arc_to_lane" in cue:
+        return float(cue["arc_to_lane"])
     pts, arc = cue["path"], 0.0
     for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
         seg = float(np.hypot(x1 - x0, y1 - y0))

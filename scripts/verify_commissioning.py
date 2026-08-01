@@ -58,7 +58,7 @@ from core.demo import aisle_scene as sc
 from core.demo.industrial_amr import (COMMISSIONED, DWELL_S, PROT_PAD, STOPPED,
                                       WARN_FACTOR, WARN_HALF_W, IndustrialAMR)
 from core.demo.plant import apply_plant, reachable_cap
-from core.demo.sight_limit import floor_speed
+from core.demo.sight_limit import floor_speed, lateral_room
 from core.demo.site_zones import mark_zones, zone_cap
 from core.mpc.mpc_controller import MpcController
 from core.rl.supervisor import SupervisorPolicy
@@ -108,11 +108,18 @@ def _obstacles(pos, walls, posts, max_n):
     return arr[np.argsort(d)[:max_n]]
 
 
-def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
-    """One mission. `arm` is one of ARMS; `sup` is required for 'ours'."""
+def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None,
+        zones=None, lateral=False):
+    """One mission. `arm` is one of ARMS; `sup` is required for 'ours'.
+
+    `zones` lets a different route supply its own marked zones; `lateral` turns on
+    the map-derived passing rule. Both default to the commissioning route's
+    behaviour so that gate is untouched.
+    """
     assert arm in ARMS, arm
     ours = arm == "ours"
-    zones = site_zones(plat) if arm == "commissioned" else []
+    if zones is None:
+        zones = site_zones(plat) if arm == "commissioned" else []
     walls, posts, goal = scene["walls"], scene["posts"], scene["goal"]
     cues = [dict(c, present_time=max(0.4, c["present_time"] + jitter))
             for c in scene["cues"]]
@@ -171,9 +178,15 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
         # justifies: fast enough to stop inside what it can see, and no faster than the
         # strict barrier allows against anyone tracked. A floor, never a ceiling.
         v_floor = None
+        lat = None
         if ours:
             v_floor = floor_speed(s, walls, posts, plat, COMMISSIONED,
                                   humans=humans, scorer=scorer)
+            if lateral:
+                # step aside only into space the map says is clear; otherwise the
+                # policy's own request stands and the machine slows instead
+                lat = lateral_room(s, walls, posts, plat, humans,
+                                   scene.get("half_w", sc.HALF_W))
             if v_floor > (rl_cap if rl_cap is not None else 0.0) + 1e-9:
                 floor_steps += 1
             rl_cap = max(rl_cap, v_floor) if rl_cap is not None else v_floor
@@ -189,6 +202,8 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
         v_max_cmd = reachable_cap(v_want, float(s[3]), plat,
                                   emergency=scanner.state == STOPPED)
         d_margin_cmd = rl_margin if ours else 0.30
+        if lat is not None and lat["margin"] is not None:
+            d_margin_cmd = max(d_margin_cmd, lat["margin"])
 
         to_goal = goal - s[:2]
         dist_goal = float(np.hypot(*to_goal))
@@ -243,6 +258,9 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None):
                 v_floor=None if v_floor is None else float(v_floor),
                 scan_cap=float(v_scan), state=scanner.state,
                 zone_cap=None if not zones else float(v_zone),
+                d_margin=float(d_margin_cmd),
+                lat_blind=None if lat is None else bool(lat["blind"]),
+                lat_escape=None if lat is None else float(lat["escape"]),
                 prot=float(scanner.protective_len(v_ref)),
                 warn=float(WARN_FACTOR * scanner.protective_len(v_ref)),
                 h=h, viol_s=viol * dt, stopped_s=stopped_s, n_stops=scanner.n_stops,

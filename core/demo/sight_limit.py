@@ -127,28 +127,77 @@ def floor_speed(state, walls, posts, plat, v_cap, humans=None, scorer=None,
 
 
 # ----------------------------------------------------------------- lateral clearance
-def passing_margin(state, walls, plat, half_w=None) -> float:
-    """How much lateral room the aisle actually offers for passing somebody.
+BLIND_LOOKAHEAD = 8.0     # m; how far ahead an opening still counts as "on my escape side"
 
-    MEASURED GAP THIS ADDRESSES. Faced with an oncoming picker in a 5.0 m aisle, the
-    trained policy pins `d_margin` at 0.30 m -- the bottom of its 0.1-2.0 action box --
-    for the whole encounter, and the machine slows to 0.36 m/s and squeezes past at
-    0.77 m without moving off the centreline at all (peak lateral 0.016 m). It is not
-    that the stack cannot step aside: driving the SAME stack at d_margin 2.0 produces a
-    1.32 m offset, a 2.01 m passing clearance and a mission a second QUICKER, because
-    going round costs less than slowing down. The policy simply never learned to ask.
 
-    So this is a floor on the lateral request, exactly parallel to the speed floor
-    above: take the largest margin the aisle can actually give, which is the half width
-    less the footprint and a wall keep-out, capped by the action box. Derived from the
-    wall geometry the robot already has -- nothing marked, nothing tuned.
+def lateral_room(state, walls, posts, plat, humans, half_w):
+    """Should the machine step around this person, and if so how much room is there?
 
-    NOT ENABLED for the commissioning route: it is a behavioural change that would move
-    numbers already measured and reported, so it is opt-in and evaluated on its own.
-    Rolling it in means re-running that gate.
+    THE MEASURED GAP. Faced with an oncoming picker the trained policy pins `d_margin`
+    at 0.30 m -- the bottom of its 0.1-2.0 action box -- for the whole encounter, and the
+    machine slows to a crawl and passes on the centreline using 0.07 m of a 2.5 m half
+    aisle. It is not that the stack cannot step aside: the SAME stack at d_margin 2.0
+    offsets 1.30 m, passes at 1.99 m and arrives QUICKER, because going round costs less
+    than slowing down. The policy simply never learned to ask.
+
+    BUT STEPPING ASIDE IS NOT ALWAYS THE RIGHT ANSWER, and that is the whole point of
+    doing this from the map rather than with a constant. Moving aside means moving into
+    space the machine is not currently looking at. If that space is a blind cross-aisle,
+    the manoeuvre swaps a person it CAN see for a person it CANNOT, which is exactly the
+    trade the rest of this project refuses to make. So:
+
+        person on my left, solid racking on my right  -> go round it
+        person on my left, an open cross-aisle on my right -> do NOT go round; slow down
+
+    Both cases are read off the same map the robot already has: the person's bearing from
+    the tracker, and the mapped jambs (`posts`) that mark every opening. Nothing marked,
+    nothing configured.
+
+    -> dict(margin, escape, blind, person_side). `margin` is None when the machine should
+    not use the width, which leaves the policy's own request untouched.
     """
+    x, y, yaw = float(state[0]), float(state[1]), float(state[2])
+    c, sn = np.cos(yaw), np.sin(yaw)
+    humans = np.zeros((0, 4)) if humans is None else np.asarray(humans, float).reshape(-1, 4)
+
+    # the person who actually matters: ahead, and closest
+    best, best_lat = None, 0.0
+    for h in humans:
+        dx, dy = h[0] - x, h[1] - y
+        ahead = dx * c + dy * sn
+        lat = -dx * sn + dy * c
+        if ahead > 0.0 and (best is None or ahead < best):
+            best, best_lat = ahead, lat
+    if best is None or best > BLIND_LOOKAHEAD:
+        return dict(margin=None, escape=0.0, blind=False, person_side=0.0)
+
+    escape = -1.0 if best_lat >= 0.0 else 1.0          # move away from them
+    escape_world = escape * c                          # +1 = toward +y, for yaw ~ 0
+
+    # is there an opening on the side I would move into, close enough to matter?
+    blind = False
+    for pth in (np.zeros((0, 3)) if posts is None
+                else np.asarray(posts, float).reshape(-1, 3)):
+        dx, dy = pth[0] - x, pth[1] - y
+        ahead = dx * c + dy * sn
+        lat = -dx * sn + dy * c
+        if -1.0 <= ahead <= BLIND_LOOKAHEAD and np.sign(lat) == np.sign(escape):
+            blind = True
+            break
+
+    if blind:
+        return dict(margin=None, escape=escape, blind=True, person_side=best_lat)
+    usable = half_w - plat.robot.robot_radius - plat.cbf.d_hard
+    return dict(margin=float(np.clip(usable, plat.mpc.default_margin,
+                                     plat.rl.d_margin_high)),
+                escape=escape, blind=False, person_side=best_lat)
+
+
+def passing_margin(state, walls, plat, half_w=None) -> float:
+    """Unconditional version, kept for the standalone head-on probe. Prefer
+    `lateral_room`, which refuses to step into an opening it cannot see into."""
     if half_w is None:
         wall_clear, _, _ = geometry_features(state, walls, None)
-        half_w = float(wall_clear) + abs(float(state[1]))     # back out the aisle width
+        half_w = float(wall_clear) + abs(float(state[1]))
     usable = half_w - plat.robot.robot_radius - plat.cbf.d_hard
     return float(np.clip(usable, plat.mpc.default_margin, plat.rl.d_margin_high))
