@@ -347,6 +347,50 @@ def t_junction_interferer(seed: int, cfg: dict, sfm: SfmParams,
                         events=events)
 
 
+def t_junction_crossing(seed: int, cfg: dict, sfm: SfmParams,
+                        robot: RobotParams, geom: dict | None = None) -> ScenarioSpec:
+    """HOLDOUT, CLEAN (never trained on): occluded junction emergence + ordinary traffic.
+
+    Identical to `t_junction_interferer` except the robot-seeking bystander is replaced
+    by a normal ONCOMING pedestrian walking down the main corridor. That matters for what
+    the generalization claim is worth: the seeker is an adversarial probe, so a held-out
+    result built on it inherits that caveat. Here the unseen element is purely the
+    COMBINATION -- blind_corner's occluded emergence together with corridor_passby's
+    oncoming traffic -- neither of which was ever trained as a pair, with nothing
+    adversarial in it. The two variants also isolate the seeker's contribution.
+    """
+    sc = {**cfg["scenarios"]["t_junction_crossing"], **(geom or {})}
+    rng = np.random.default_rng(seed)
+    half, open_x, pw, length, walls, posts = _corner_arena(sc)
+    goal_x = sc.get("goal_x", 6.0)
+    # occluded pedestrian in the side passage -- same emergence logic as blind_corner
+    px = rng.uniform(open_x + 0.25 * pw, open_x + 0.75 * pw)
+    py = rng.uniform(half + 0.6, half + 1.6)
+    speed_o = rng.uniform(1.0, 1.5) if geom is not None else rng.uniform(
+        *sfm.desired_speed_range)
+    # ordinary oncoming walker, started beyond the junction so it meets the robot
+    # somewhere in the corridor (corridor_passby geometry, not a seeker)
+    ox = rng.uniform(open_x + pw + 1.5, length - 0.5)
+    oy = rng.uniform(-half + 0.5, half - 0.5)
+    speed_c = rng.uniform(*sfm.desired_speed_range)
+    crowd = SocialForceCrowd(sfm, [[px, py], [ox, oy]],
+                             [[px, py], [-1.5, oy]], [speed_o, speed_c],
+                             walls=walls, rng=rng)
+    if geom is None:
+        x_emerge = px - rng.uniform(0.8, 1.6)
+        t_start = max(_t_robot_reaches(x_emerge, robot) - (py - half) / speed_o, 0.0)
+        events = [(t_start, 0, np.array([px, -half + 0.4]))]
+    else:                                    # position trigger (see blind_corner)
+        d_front = rng.uniform(0.8, 1.3)
+        delay = py / speed_o                 # lane-anchored, not entry-anchored
+        trigger_x = px - d_front - robot.v_max * delay
+        events = [(("robot_x_ge", trigger_x), 0, np.array([px, -half + 0.4]))]
+    return ScenarioSpec("t_junction_crossing", seed, np.array([0.0, 0.0, 0.0]),
+                        np.array([goal_x, 0.0]), walls, posts, crowd,
+                        reveal_distance=sc["reveal_distance"], occlusion_y=half,
+                        events=events)
+
+
 def free_roam(seed: int, n_pedestrians: int = 4,
               arena: tuple = (-1.0, -3.0, 7.0, 3.0)) -> ScenarioSpec:
     """Randomized free-roam (training data generator, plan D7): like open_hall but
@@ -384,6 +428,7 @@ _BUILDERS = {
     "blind_corner": blind_corner,
     "interferer": interferer,
     "t_junction_interferer": t_junction_interferer,
+    "t_junction_crossing": t_junction_crossing,
 }
 
 # The historical five-scenario evaluation battery (TB3 track) -- unchanged, so
@@ -393,6 +438,11 @@ SCENARIO_NAMES = ("corridor_passby", "perpendicular_crossing",
                   "doorway_negotiation", "open_hall", "blind_corner")
 INDUSTRIAL_SCENARIOS = SCENARIO_NAMES + ("interferer",)
 HOLDOUT_SCENARIO = "t_junction_interferer"
+# The clean held-out test: same unseen junction combination WITHOUT the adversarial
+# seeker, so the generalization claim does not rest on a probe scenario. Kept as a
+# separate constant -- HOLDOUT_SCENARIO stays as it was so existing CSVs and the
+# scripts that read them keep their meaning.
+HOLDOUT_CLEAN = "t_junction_crossing"
 
 
 def make_scenario(name: str, seed: int, platform: str = "tb3") -> ScenarioSpec:

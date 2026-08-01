@@ -1,0 +1,90 @@
+# This config is what you RECORD. Speed differences read badly on a 3D camera; the
+# stopping envelope does not, because it scales with v^2 (2.83 m at 1.5 m/s vs 1.03 m
+# at 0.8 m/s). Two things that made an earlier recording unusable are fixed here:
+#   * the Orbit view had a FIXED focal point and no Target Frame, so the camera sat at
+#     the origin while the robot drove 27 m away, and the safety disc filled the whole
+#     viewport. "Target Frame: base_footprint" makes the view ride with the robot.
+#   * the LaserScan display pointed at /scan, which this world has no sensor for, so it
+#     sat in a permanent error state. Removed.
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Global Options:
+    Background Color: 238; 238; 240
+    Fixed Frame: odom
+    Frame Rate: 30
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Plane Cell Count: 40
+      Cell Size: 1
+      Color: 170; 170; 175
+      Alpha: 0.35
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: false
+      Show Names: false
+    - Class: rviz_default_plugins/Odometry
+      Name: DrivenPath
+      Enabled: true
+      Topic:
+        Value: /odom
+      Keep: 150
+      Position Tolerance: 0.15
+      Angle Tolerance: 0.5
+      Shape:
+        Value: Arrow
+        Color: 40; 110; 170
+        Alpha: 0.55
+        Shaft Length: 0.25
+        Shaft Radius: 0.03
+        Head Length: 0.12
+        Head Radius: 0.07
+    - Class: rviz_default_plugins/MarkerArray
+      Name: SafetyEnvelope
+      Enabled: true
+      Topic:
+        Value: /navrl/field
+        Depth: 5
+        Reliability Policy: Reliable
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: FollowRobot
+      # rides with the robot -- without this the camera never moves
+      Target Frame: base_footprint
+      Distance: 22
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Pitch: 0.95
+      Yaw: 3.14
+      Near Clip Distance: 0.05
+    Saved:
+      - Class: rviz_default_plugins/Orbit
+        Name: TopDownFollow
+        Target Frame: base_footprint
+        Distance: 20
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Pitch: 1.45
+        Yaw: 3.14
+Window Geometry:
+  Displays:
+    collapsed: true
+  Views:
+    collapsed: true
+  Height: 1000
+  Width: 1800
+  Hide Left Dock: true
+  Hide Right Dock: true

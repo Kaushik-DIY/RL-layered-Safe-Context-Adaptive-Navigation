@@ -1,0 +1,182 @@
+<?xml version="1.0" ?>
+<!-- Gazebo Classic 11 world for the INDUSTRIAL sim-to-sim demo (Gate G5, headline).
+
+     Reproduces the 2D `blind_corner` scenario (platform=industrial) so the trained
+     policy runs IN-DISTRIBUTION:
+       * main corridor  y in [-1.75, 1.75],  x in [-0.5, 13]
+       * side aisle     x in [6, 7.5], opening UP to y=3.95 (the blind corner)
+       * robot: MiR-class diff-drive AMR, v_max 1.5 m/s, starts (0,0) heading +x,
+         goal (12,0) down the corridor
+       * worker: starts hidden up the aisle (6.96, 2.9), walks down across the
+         corridor and back, looping. The tracker's line-of-sight/reveal occlusion
+         keeps it hidden until it enters the corridor -> genuinely blind corner.
+
+     libgazebo_ros_state publishes /gazebo/model_states (the tracker's input);
+     libgazebo_ros_diff_drive gives the AMR /odom + /cmd_vel + odom->base_footprint TF.
+     No turtlebot3 dependency: the robot is defined inline and needs no separate spawn. -->
+<sdf version="1.6">
+  <world name="industrial_blind_corner">
+
+    <include><uri>model://sun</uri></include>
+    <include><uri>model://ground_plane</uri></include>
+
+    <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so">
+      <ros><namespace>/gazebo</namespace></ros>
+      <update_rate>20.0</update_rate>
+    </plugin>
+
+    <!-- ===================== warehouse geometry (walls) ===================== -->
+    <!-- thin boxes, 1 m tall; centres/lengths match the 2D scenario wall segments -->
+    <model name="wall_bottom">
+      <static>true</static><pose>6.25 -1.75 0.5 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>13.5 0.1 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>13.5 0.1 1.0</size></box></geometry>
+          <material><ambient>0.55 0.55 0.6 1</ambient></material></visual></link>
+    </model>
+    <model name="wall_top_left">
+      <static>true</static><pose>2.75 1.75 0.5 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>6.5 0.1 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>6.5 0.1 1.0</size></box></geometry>
+          <material><ambient>0.55 0.55 0.6 1</ambient></material></visual></link>
+    </model>
+    <model name="wall_top_right">
+      <static>true</static><pose>10.25 1.75 0.5 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>5.5 0.1 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>5.5 0.1 1.0</size></box></geometry>
+          <material><ambient>0.55 0.55 0.6 1</ambient></material></visual></link>
+    </model>
+    <model name="aisle_wall_left">
+      <static>true</static><pose>6.0 2.85 0.5 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.1 2.2 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.1 2.2 1.0</size></box></geometry>
+          <material><ambient>0.7 0.5 0.2 1</ambient></material></visual></link>
+    </model>
+    <model name="aisle_wall_right">
+      <static>true</static><pose>7.5 2.85 0.5 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.1 2.2 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.1 2.2 1.0</size></box></geometry>
+          <material><ambient>0.7 0.5 0.2 1</ambient></material></visual></link>
+    </model>
+
+    <!-- ===================== MiR-class diff-drive AMR ====================== -->
+    <model name="amr">
+      <!-- z MUST equal the wheel radius (0.1) so the drive wheels touch the ground.
+           At 0.11 the wheels floated 1 cm and the AMR rode on its frictionless
+           casters, so it had no traction and just slid into a wall. -->
+      <pose>0 0 0.1 0 0 0</pose>
+      <link name="base_footprint">
+        <inertial>
+          <mass>60.0</mass>
+          <inertia><ixx>3.0</ixx><iyy>6.0</iyy><izz>7.0</izz>
+                   <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia>
+        </inertial>
+        <!-- body -->
+        <collision name="body_c"><pose>0 0 0.14 0 0 0</pose>
+          <geometry><box><size>0.9 0.58 0.3</size></box></geometry></collision>
+        <visual name="body_v"><pose>0 0 0.14 0 0 0</pose>
+          <geometry><box><size>0.9 0.58 0.3</size></box></geometry>
+          <material><ambient>0.15 0.35 0.75 1</ambient><diffuse>0.2 0.45 0.9 1</diffuse></material></visual>
+        <!-- heading marker so the AMR's facing is legible on camera -->
+        <visual name="nose_v"><pose>0.42 0 0.14 0 0 0</pose>
+          <geometry><box><size>0.08 0.3 0.12</size></box></geometry>
+          <material><ambient>0.95 0.8 0.1 1</ambient></material></visual>
+        <!-- frictionless caster contacts front & rear (diff-drive support) -->
+        <collision name="caster_f"><pose>0.35 0 -0.045 0 0 0</pose>
+          <geometry><sphere><radius>0.05</radius></sphere></geometry>
+          <surface><friction><ode><mu>0</mu><mu2>0</mu2></ode></friction></surface></collision>
+        <collision name="caster_r"><pose>-0.35 0 -0.045 0 0 0</pose>
+          <geometry><sphere><radius>0.05</radius></sphere></geometry>
+          <surface><friction><ode><mu>0</mu><mu2>0</mu2></ode></friction></surface></collision>
+      </link>
+
+      <!-- The link frame stays UNROTATED and the cylinder is tilted by its geometry
+           pose instead. SDF expresses <axis><xyz> in the joint (=child link) frame,
+           so a rotated link turned "0 1 0" into a VERTICAL axis: the wheels spun
+           like turntables and the AMR never moved. Unrotated link => y is the true
+           rolling axis. iyy is therefore the spin inertia. -->
+      <link name="left_wheel">
+        <pose>0 0.25 0 0 0 0</pose>
+        <inertial><mass>1.5</mass>
+          <inertia><ixx>0.005</ixx><iyy>0.008</iyy><izz>0.005</izz>
+                   <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="c"><pose>0 0 0 -1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.1</radius><length>0.05</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface></collision>
+        <visual name="v"><pose>0 0 0 -1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.1</radius><length>0.05</length></cylinder></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient></material></visual>
+      </link>
+      <link name="right_wheel">
+        <pose>0 -0.25 0 0 0 0</pose>
+        <inertial><mass>1.5</mass>
+          <inertia><ixx>0.005</ixx><iyy>0.008</iyy><izz>0.005</izz>
+                   <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="c"><pose>0 0 0 -1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.1</radius><length>0.05</length></cylinder></geometry>
+          <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface></collision>
+        <visual name="v"><pose>0 0 0 -1.5708 0 0</pose>
+          <geometry><cylinder><radius>0.1</radius><length>0.05</length></cylinder></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient></material></visual>
+      </link>
+
+      <joint name="left_wheel_joint" type="revolute">
+        <parent>base_footprint</parent><child>left_wheel</child>
+        <axis><xyz>0 1 0</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+      </joint>
+      <joint name="right_wheel_joint" type="revolute">
+        <parent>base_footprint</parent><child>right_wheel</child>
+        <axis><xyz>0 1 0</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+      </joint>
+
+      <plugin name="diff_drive" filename="libgazebo_ros_diff_drive.so">
+        <ros><namespace>/</namespace></ros>
+        <update_rate>50</update_rate>
+        <left_joint>left_wheel_joint</left_joint>
+        <right_joint>right_wheel_joint</right_joint>
+        <wheel_separation>0.5</wheel_separation>
+        <wheel_diameter>0.2</wheel_diameter>
+        <max_wheel_torque>200</max_wheel_torque>
+        <max_wheel_acceleration>3.0</max_wheel_acceleration>
+        <command_topic>cmd_vel</command_topic>
+        <odometry_topic>odom</odometry_topic>
+        <odometry_frame>odom</odometry_frame>
+        <robot_base_frame>base_footprint</robot_base_frame>
+        <publish_odom>true</publish_odom>
+        <publish_odom_tf>true</publish_odom_tf>
+        <publish_wheel_tf>true</publish_wheel_tf>
+      </plugin>
+    </model>
+
+    <!-- ===================== the blind-corner worker ======================= -->
+    <actor name="actor_worker">
+      <skin><filename>walk.dae</filename></skin>
+      <animation name="walking"><filename>walk.dae</filename><interpolate_x>true</interpolate_x></animation>
+      <script>
+        <loop>true</loop>
+        <delay_start>3.0</delay_start>
+        <auto_start>true</auto_start>
+        <!-- 30 s loop telling ONE clean story: the worker waits hidden up the aisle,
+             strides out across the corridor at 1.1 m/s (a striding worker, so the
+             reveal is genuinely late), then parks clear against the far wall while
+             the AMR passes, and only then walks back.
+
+             The previous 10 s loop kept the worker INSIDE the robot's lane 68% of
+             the time, sweeping back and forth: the AMR never got a window to pass,
+             so it dithered and swerved. Scripted actors never yield, so a worker
+             that lives in the lane will always walk straight through the robot. -->
+        <trajectory id="0" type="walking">
+          <waypoint><time>0.0</time><pose>6.96  3.60 0 0 0 -1.5708</pose></waypoint>
+          <waypoint><time>6.0</time><pose>6.96  3.60 0 0 0 -1.5708</pose></waypoint>
+          <waypoint><time>10.5</time><pose>6.96 -1.40 0 0 0 -1.5708</pose></waypoint>
+          <waypoint><time>21.5</time><pose>6.96 -1.40 0 0 0 -1.5708</pose></waypoint>
+          <waypoint><time>22.0</time><pose>6.96 -1.40 0 0 0  1.5708</pose></waypoint>
+          <waypoint><time>26.5</time><pose>6.96  3.60 0 0 0  1.5708</pose></waypoint>
+          <waypoint><time>29.5</time><pose>6.96  3.60 0 0 0  1.5708</pose></waypoint>
+          <waypoint><time>30.0</time><pose>6.96  3.60 0 0 0 -1.5708</pose></waypoint>
+        </trajectory>
+      </script>
+    </actor>
+
+    <gui><camera name="user_camera"><pose>4 -8 6 0 0.6 1.2</pose></camera></gui>
+  </world>
+</sdf>

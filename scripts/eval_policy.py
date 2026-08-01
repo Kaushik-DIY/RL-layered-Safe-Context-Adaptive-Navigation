@@ -34,16 +34,22 @@ from core.sim2d.scenarios import SCENARIO_NAMES
 RESULTS = Path(__file__).resolve().parents[1] / "experiments" / "results"
 
 
-def load_model(path: str) -> PPO:
+def load_model(path: str, platform: str = "tb3") -> PPO:
     """PPO.load with custom_objects: Kaggle saves under NumPy 2, whose pickled
     class layout (numpy._core.*) cannot unpickle under this venv's NumPy 1. The
     policy weights are torch tensors (version-agnostic); only spaces/schedules
     are pickled, so we substitute them instead of deserializing (SB3's
-    documented cross-version workaround). Spaces mirror NavEnv exactly."""
-    rl = RlParams.from_yaml()
+    documented cross-version workaround). Spaces mirror NavEnv exactly.
+
+    `platform` selects the space shapes: 'tb3' (32-dim obs v1, default -- keeps
+    every historical call byte-identical) or 'industrial' (35-dim obs v2, MiR
+    action box)."""
+    from core.common.platform import load_platform
+    plat = load_platform(platform)
+    rl = plat.rl
     custom = {
         "observation_space": gym.spaces.Box(
-            -np.inf, np.inf, (obs_dim(rl.K_nearest),), np.float32),
+            -np.inf, np.inf, (obs_dim(rl.K_nearest, plat.obs_version),), np.float32),
         "action_space": gym.spaces.Box(
             np.array([rl.v_max_low, rl.d_margin_low], dtype=np.float32),
             np.array([rl.v_max_high, rl.d_margin_high], dtype=np.float32)),

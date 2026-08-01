@@ -47,6 +47,12 @@ scenarios:
     id: 7                   # HOLDOUT (industrial track): never in training
     reveal_distance: 1.2
     tests: "unseen combo: occluded junction emergence + a robot-seeking bystander"
+  t_junction_crossing:
+    id: 8                   # HOLDOUT, CLEAN: never in training, nothing adversarial
+    reveal_distance: 1.2
+    tests: "unseen combo WITHOUT the seeker: occluded junction emergence + ordinary
+            oncoming corridor traffic -- the generalization test that does not rest
+            on an adversarial probe"
 
 # Industrial-platform geometry overrides (2026-07 replan; grounding table in
 # robot.yaml / the replan). Same scenario LOGIC, MiR-class arenas: 3.5 m warehouse
@@ -62,6 +68,8 @@ industrial_geometry:
                            length: 13.0, goal_x: 12.0}
   interferer:             {x1: 14.0, y_half: 4.0, goal_x: 13.0}
   t_junction_interferer:  {half_width: 1.75, open_x: 6.0, passage_width: 1.5,
+                           length: 13.0, goal_x: 12.0}
+  t_junction_crossing:    {half_width: 1.75, open_x: 6.0, passage_width: 1.5,
                            length: 13.0, goal_x: 12.0}
 
 # Systems under test -- the ablation ladder (plan 4.1).

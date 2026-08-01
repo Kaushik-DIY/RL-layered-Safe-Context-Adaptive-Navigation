@@ -16,8 +16,9 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 
-from core.common.params import MpcParams, RobotParams
+from core.common.platform import load_platform
 from core.mpc.mpc_controller import MpcController
+from core.sim2d.pedestrians import closest_point_on_segment
 
 from navrl_nodes import yaw_from_quaternion
 
@@ -27,12 +28,22 @@ GOAL_TOL = 0.15  # m
 class MpcNode(Node):
     def __init__(self):
         super().__init__("mpc_node")
-        self.robot = RobotParams.from_yaml()
-        self.mpc_cfg = MpcParams.from_yaml()
+        self.declare_parameter("platform", "tb3")   # 'industrial' = MiR-class stack
+        plat = load_platform(str(self.get_parameter("platform").value))
+        self.robot = plat.robot
+        self.mpc_cfg = plat.mpc
         self.mpc = MpcController(self.robot, self.mpc_cfg)
 
-        # flat [x, y, r] * n static obstacles, settable per scenario
+        # World geometry so the MPC avoids walls EXACTLY like the 2D env's
+        # _mpc_obstacles: scenario posts ([x,y,r]) plus the nearest point on each
+        # wall segment ([x1,y1,x2,y2], treated as an r=0 obstacle). Without this the
+        # controller is blind to the corridor and any lateral nudge drives it into a
+        # wall -- the transfer gap. static_obstacles kept for backward compatibility.
         self.declare_parameter("static_obstacles", [0.0])
+        self.declare_parameter("walls", [0.0])
+        self.declare_parameter("posts", [0.0])
+        self._walls = self._reshape(self.get_parameter("walls").value, 4)
+        self._posts = self._reshape(self.get_parameter("posts").value, 3)
         self._u_prev = np.zeros(2)
         self._state = None            # [x, y, yaw, v, omega]
         self._goal = None
@@ -64,11 +75,36 @@ class MpcNode(Node):
         self._params = (float(msg.data[0]), float(msg.data[1]))
 
     # ------------------------------------------------------------------ loop
-    def _static_obs(self):
-        flat = [float(v) for v in self.get_parameter("static_obstacles").value]
-        if len(flat) < 3:
+    @staticmethod
+    def _reshape(flat, width):
+        """Flat parameter list -> (n, width) array; None for the [0.0] sentinel."""
+        arr = np.asarray([float(v) for v in flat], dtype=float)
+        if arr.size < width:
             return None
-        return np.asarray(flat[: 3 * (len(flat) // 3)]).reshape(-1, 3)
+        return arr[: width * (arr.size // width)].reshape(-1, width)
+
+    def _static_obs(self):
+        """Posts + nearest point on each wall, 6 nearest overall.
+
+        Byte-for-byte the same rule as NavEnv._mpc_obstacles, so the controller sees
+        the corridor in Gazebo exactly as it did in training.
+        """
+        obs = []
+        legacy = self._reshape(self.get_parameter("static_obstacles").value, 3)
+        if legacy is not None:
+            obs.extend(legacy.tolist())
+        if self._posts is not None:
+            obs.extend(self._posts.tolist())
+        if self._walls is not None:
+            pos = self._state[:2]
+            for w in self._walls:
+                p = closest_point_on_segment(pos, w[:2], w[2:])
+                obs.append([p[0], p[1], 0.0])
+        if not obs:
+            return None
+        arr = np.asarray(obs, dtype=float)
+        d = np.hypot(arr[:, 0] - self._state[0], arr[:, 1] - self._state[1])
+        return arr[np.argsort(d)[: self.mpc_cfg.max_static_obstacles]]
 
     def _carrot(self) -> np.ndarray:
         """Straight-line carrot toward the goal (same policy as the 2D env)."""

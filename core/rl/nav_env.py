@@ -367,23 +367,39 @@ class NavEnv(gym.Env):
                 # human_closing > 0 is a pedestrian walking INTO the robot, not the
                 # robot driving in -- the CBF caps closing motion, it cannot forbid
                 # a human from approaching a robot that is not moving toward them.
-                v_los = human_closing = 0.0
-                if len(humans_true):
-                    j = int(np.argmin(np.hypot(humans_true[:, 0] - self.s[0],
-                                               humans_true[:, 1] - self.s[1])))
+                def closing(j):
                     lx = humans_true[j, 0] - self.s[0]
                     ly = humans_true[j, 1] - self.s[1]
                     dd = max(float(np.hypot(lx, ly)), 1e-6)
                     nx, ny = lx / dd, ly / dd
                     cos = np.cos(self.s[2]) * nx + np.sin(self.s[2]) * ny
-                    v_los = v * max(0.0, float(cos))
-                    human_closing = -float(humans_true[j, 2] * nx + humans_true[j, 3] * ny)
+                    return (v * max(0.0, float(cos)),
+                            -float(humans_true[j, 2] * nx + humans_true[j, 3] * ny))
+
+                v_los = human_closing = 0.0
+                # ...and the same pair for the BARRIER-CRITICAL human, which in a crowd
+                # is often NOT the nearest one: the robot can be rolling toward a gap
+                # (v_los > 0 to the person ahead) while h is set by someone closing from
+                # another bearing. Attributing a breach off the nearest-human proxy
+                # mislabels exactly that case, so record the critical human explicitly.
+                v_los_crit = closing_crit = 0.0
+                if len(humans_true):
+                    j = int(np.argmin(np.hypot(humans_true[:, 0] - self.s[0],
+                                               humans_true[:, 1] - self.s[1])))
+                    v_los, human_closing = closing(j)
+                    bars = [self.filt.barrier(self.s, hh) for hh in humans_true]
+                    v_los_crit, closing_crit = closing(int(np.argmin(bars)))
                 self.trajectory.append({
                     "t": self.t, "x": float(self.s[0]), "y": float(self.s[1]),
                     "theta": float(self.s[2]),
                     "v_mpc": float(u_mpc[0]), "v_safe": float(u_safe[0]),
                     "v_applied": v, "h": float(h), "d_human": float(d_human),
                     "v_los": v_los, "human_closing": human_closing,
+                    "v_los_crit": v_los_crit, "closing_crit": closing_crit,
+                    # barrier over the TRACKED humans only -- what the filter could act
+                    # on. h < 0 while h_seen >= 0 means the filter had no information:
+                    # a sight-distance failure of the speed policy, not a filter fault.
+                    "h_seen": float(self.filt.min_barrier(self.s, humans)),
                     "v_max_cmd": self.v_max_cmd, "d_margin_cmd": self.d_margin_cmd,
                     "intervention": float(info_f["intervention"]),
                     "protective_stop": bool(info_f["protective_stop"]),

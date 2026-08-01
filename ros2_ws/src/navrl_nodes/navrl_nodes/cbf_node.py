@@ -17,7 +17,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 
 from core.cbf.cbf_filter import CbfFilter
-from core.common.params import CbfParams, RobotParams
+from core.common.platform import load_platform
 
 from navrl_nodes import yaw_from_quaternion
 
@@ -25,8 +25,10 @@ from navrl_nodes import yaw_from_quaternion
 class CbfNode(Node):
     def __init__(self):
         super().__init__("cbf_node")
-        self.robot = RobotParams.from_yaml()
-        self.cbf = CbfParams.from_yaml()
+        self.declare_parameter("platform", "tb3")   # 'industrial' = MiR-class stack
+        plat = load_platform(str(self.get_parameter("platform").value))
+        self.robot = plat.robot
+        self.cbf = plat.cbf
         self.filt = CbfFilter(self.robot, self.cbf)
         self.declare_parameter("stale_s", 0.5)
 
