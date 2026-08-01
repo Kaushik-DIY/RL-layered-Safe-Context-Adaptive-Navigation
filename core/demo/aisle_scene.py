@@ -51,37 +51,48 @@ class Station:
         self.kind, self.x, self.kw = kind, x, kw
 
 
-def build(stations, goal_x):
-    """-> dict(walls, posts, cues, goal). Geometry is derived from the stations so the
-    drawn scene and the planner's obstacle set can never disagree."""
+def build(stations, goal_x, half_w=HALF_W):
+    """-> dict(walls, posts, cues, goal, half_w). Geometry is derived from the stations
+    so the drawn scene and the planner's obstacle set can never disagree.
+
+    `half_w` defaults to the 3.5 m industrial aisle every existing scene was measured on
+    -- changing the default would silently move every recorded result. A scene that wants
+    a wider aisle (a two-way run where an AMR and a picker have to pass each other) passes
+    its own, and every cue carries the value it was built with so occlusion stays
+    consistent with the geometry rather than with a module constant.
+    """
     mouths = [s.x for s in stations
               if s.kind in ("blind_cross", "crossing", "blind_clear")]
     walls, posts, cues = [], [], []
 
     # main aisle walls, broken by each side-aisle mouth
+    top = max(AISLE_TOP, half_w + 2.25)
     edges = [X_MIN]
     for mx in sorted(mouths):
         edges += [mx - MOUTH / 2, mx + MOUTH / 2]
     edges.append(goal_x + 1.5)
     for i in range(0, len(edges) - 1, 2):
-        walls.append([edges[i], HALF_W, edges[i + 1], HALF_W])
-    walls.append([X_MIN, -HALF_W, goal_x + 1.5, -HALF_W])
+        walls.append([edges[i], half_w, edges[i + 1], half_w])
+    walls.append([X_MIN, -half_w, goal_x + 1.5, -half_w])
     for mx in mouths:                                   # side-aisle side walls
-        walls.append([mx - MOUTH / 2, HALF_W, mx - MOUTH / 2, AISLE_TOP])
-        walls.append([mx + MOUTH / 2, HALF_W, mx + MOUTH / 2, AISLE_TOP])
-        posts.append([mx - MOUTH / 2, HALF_W, 0.12])
-        posts.append([mx + MOUTH / 2, HALF_W, 0.12])
+        walls.append([mx - MOUTH / 2, half_w, mx - MOUTH / 2, top])
+        walls.append([mx + MOUTH / 2, half_w, mx + MOUTH / 2, top])
+        posts.append([mx - MOUTH / 2, half_w, 0.12])
+        posts.append([mx + MOUTH / 2, half_w, 0.12])
 
     for st in stations:
-        cues.extend(_station_cues(st, posts))
+        cues.extend(_station_cues(st, posts, half_w))
+    for c in cues:
+        c.setdefault("occ_y", half_w)        # travels with the cue, not a module global
 
     return dict(walls=np.asarray(walls, float), posts=np.asarray(posts, float),
-                cues=cues, goal=np.array([goal_x, 0.0]))
+                cues=cues, goal=np.array([goal_x, 0.0]), half_w=half_w)
 
 
-def _station_cues(st, posts):
+def _station_cues(st, posts, half_w=HALF_W):
     """Build the worker cues for one station and register any occluding clutter."""
     x, kw = st.x, st.kw
+    HW = half_w
 
     if st.kind == "empty_corner":
         return []                                        # no geometry, nobody there
@@ -97,13 +108,13 @@ def _station_cues(st, posts):
     if st.kind == "blind_cross":
         # worker descends the side aisle and crosses the robot's lane
         return [dict(name=f"cross@{x:.0f}", lane_x=x, speed=kw.get("speed", 1.40),
-                     path=[(x, HALF_W + 1.3), (x, -HALF_W - 2.5)],
+                     path=[(x, HW + 1.3), (x, -HW - 2.5)],
                      present_time=kw.get("present_time", 1.9), occludes=True)]
 
     if st.kind == "crossing":
         # visible crossing from the south side, in view the whole way
         return [dict(name=f"vis@{x:.0f}", lane_x=x, speed=kw.get("speed", 1.35),
-                     path=[(x, -HALF_W - 3.0), (x, HALF_W + 1.5)],
+                     path=[(x, -HW - 3.0), (x, HW + 1.5)],
                      present_time=kw.get("present_time", 2.1), occludes=False)]
 
     if st.kind == "pallet_step_out":
@@ -126,7 +137,8 @@ def _station_cues(st, posts):
         # there is a genuine passing lane for the AMR to use.
         lane = kw.get("lane", 1.00)
         return [dict(name=f"head@{x:.0f}", lane_x=x, speed=kw.get("speed", 1.25),
-                     path=[(x + 5.5, lane), (x - 8.0, lane)],
+                     path=[(x + kw.get("lead", 5.5), lane),
+                           (x - kw.get("trail", 8.0), lane)],
                      present_time=kw.get("present_time", 3.0), occludes=False)]
 
     if st.kind == "slow_leader":
@@ -155,7 +167,7 @@ def _station_cues(st, posts):
             cx = x + spacing * i
             out.append(dict(name=f"crowd{i}@{cx:.0f}", lane_x=cx,
                             speed=kw.get("speed", 1.05),
-                            path=[(cx, side * (HALF_W + 1.2)), (cx, -side * (HALF_W + 1.2))],
+                            path=[(cx, side * (HW + 1.2)), (cx, -side * (HW + 1.2))],
                             present_time=kw.get("present_time", 2.0),
                             occludes=False))
         return out
@@ -217,7 +229,8 @@ def visible(cue, wx, wy, robot_xy):
     d = float(np.hypot(wx - robot_xy[0], wy - robot_xy[1]))
     if d <= REVEAL_DISTANCE:
         return True
-    if wy > OCCLUSION_Y or wy < -OCCLUSION_Y:
+    occ_y = cue.get("occ_y", OCCLUSION_Y)
+    if wy > occ_y or wy < -occ_y:
         return False
     occ = cue.get("occluder")
     if occ is not None:

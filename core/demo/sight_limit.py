@@ -124,3 +124,31 @@ def floor_speed(state, walls, posts, plat, v_cap, humans=None, scorer=None,
             return float(v)
         v -= 0.02
     return float(plat.rl.v_max_low)
+
+
+# ----------------------------------------------------------------- lateral clearance
+def passing_margin(state, walls, plat, half_w=None) -> float:
+    """How much lateral room the aisle actually offers for passing somebody.
+
+    MEASURED GAP THIS ADDRESSES. Faced with an oncoming picker in a 5.0 m aisle, the
+    trained policy pins `d_margin` at 0.30 m -- the bottom of its 0.1-2.0 action box --
+    for the whole encounter, and the machine slows to 0.36 m/s and squeezes past at
+    0.77 m without moving off the centreline at all (peak lateral 0.016 m). It is not
+    that the stack cannot step aside: driving the SAME stack at d_margin 2.0 produces a
+    1.32 m offset, a 2.01 m passing clearance and a mission a second QUICKER, because
+    going round costs less than slowing down. The policy simply never learned to ask.
+
+    So this is a floor on the lateral request, exactly parallel to the speed floor
+    above: take the largest margin the aisle can actually give, which is the half width
+    less the footprint and a wall keep-out, capped by the action box. Derived from the
+    wall geometry the robot already has -- nothing marked, nothing tuned.
+
+    NOT ENABLED for the commissioning route: it is a behavioural change that would move
+    numbers already measured and reported, so it is opt-in and evaluated on its own.
+    Rolling it in means re-running that gate.
+    """
+    if half_w is None:
+        wall_clear, _, _ = geometry_features(state, walls, None)
+        half_w = float(wall_clear) + abs(float(state[1]))     # back out the aisle width
+    usable = half_w - plat.robot.robot_radius - plat.cbf.d_hard
+    return float(np.clip(usable, plat.mpc.default_margin, plat.rl.d_margin_high))
