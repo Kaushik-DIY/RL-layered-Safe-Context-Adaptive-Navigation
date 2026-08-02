@@ -3,17 +3,61 @@
 3D proof that the **same** control stack that produced the 2D video drives a physically
 simulated differential-drive AMR through the same route.
 
-```bash
-source /opt/ros/humble/setup.bash
-cd ros2_ws && colcon build --packages-select navrl_nodes --symlink-install
-source install/setup.bash && cd ..
-export PYTHONPATH=$PWD:$PYTHONPATH
+## Run it
 
+**One-time, per machine** (or after any change to the nodes, the world or `core/`):
+
+```bash
+cd ~/Context_adaptive_navigation/.claude/worktrees/commissioning-video
+source /opt/ros/humble/setup.bash
 PYTHONPATH=$PWD .venv-navrl/bin/python scripts/gen_final_world.py   # world is GENERATED
-ros2 launch navrl_nodes final_demo.launch.py                        # supervised, with GUI
-ros2 launch navrl_nodes final_demo.launch.py gui:=false             # headless
+cd ros2_ws && colcon build --packages-select navrl_nodes --symlink-install && cd ..
+```
+
+**Every terminal** that runs a node needs all three of these, or the nodes cannot
+`import core.*` and the launch file itself will not load:
+
+```bash
+cd ~/Context_adaptive_navigation/.claude/worktrees/commissioning-video
+source /opt/ros/humble/setup.bash
+source ros2_ws/install/setup.bash
+export PYTHONPATH=$PWD:$PYTHONPATH
+```
+
+**Then, a single command** — Gazebo and rviz together:
+
+```bash
+ros2 launch navrl_nodes final_demo.launch.py
+```
+
+Variants:
+
+| command | what it does |
+|---|---|
+| `... final_demo.launch.py` | Gazebo GUI + rviz, supervised. The demo. |
+| `... final_demo.launch.py rviz:=false` | Gazebo only |
+| `... final_demo.launch.py gui:=false` | rviz only, no Gazebo window |
+| `... final_demo.launch.py gui:=false rviz:=false` | headless, for the check below |
+| `... final_demo.launch.py run:=fixed` | no supervisor, for contrast |
+| `... final_demo.launch.py auto_goal:=false` | hold at the start; publish the goal by hand |
+
+The goal is published automatically 8 s after launch (`goal_delay:=N` to change it). Then:
+
+```bash
 PYTHONPATH=$PWD .venv-navrl/bin/python scripts/check_final_gazebo.py
 ```
+
+### What each window shows
+
+**Gazebo** is the physical truth: the AMR, the racking, the aisle, the three workers. The
+camera tracks the AMR over the whole 31 m.
+
+**rviz is where the safety layer becomes legible**, and it is the more useful of the two.
+Speed differences read badly in 3D — 1.2 against 0.6 m/s looks much the same on camera —
+but the protective field does not, because it scales with v². The `demo.rviz` view rides
+with `base_footprint`, draws the walls and the robot from `field_viz_node` (rviz has no
+`RobotModel` here: the AMR lives in the world SDF, not a URDF), and colours the field ring
+by the barrier `h`. Watch the ring grow and shrink as the machine changes speed.
 
 ## Nothing here is a re-implementation
 

@@ -1,8 +1,9 @@
 """THE FINAL DEMO in Gazebo: the same stack and the same route as the 2D video, in 3D.
 
-    ros2 launch navrl_nodes final_demo.launch.py               # supervised (ours)
-    ros2 launch navrl_nodes final_demo.launch.py run:=fixed    # no supervisor
-    ros2 launch navrl_nodes final_demo.launch.py gui:=false    # headless, for validation
+    ros2 launch navrl_nodes final_demo.launch.py                 # Gazebo + rviz
+    ros2 launch navrl_nodes final_demo.launch.py rviz:=false      # Gazebo only
+    ros2 launch navrl_nodes final_demo.launch.py run:=fixed       # no supervisor
+    ros2 launch navrl_nodes final_demo.launch.py gui:=false rviz:=false   # headless
 
 A 31 m mission down a 5.0 m two-way aisle, three encounters:
 
@@ -89,6 +90,13 @@ def generate_launch_description() -> LaunchDescription:
     director = Node(package="navrl_nodes", executable="scene_director_node",
                     name="scene_director", output="screen",
                     parameters=[{"use_sim_time": True, "scene": "final"}])
+    # rviz is where the SAFETY layer is legible: speed differences read badly in 3D
+    # (1.2 vs 0.6 m/s looks similar on camera) but the protective field does not, because
+    # it scales with v^2. Run it alongside Gazebo rather than instead of it.
+    rviz = Node(package="rviz2", executable="rviz2", name="rviz2", output="log",
+                arguments=["-d", os.path.join(navrl, "rviz", "demo.rviz")],
+                parameters=[{"use_sim_time": True}],
+                condition=IfCondition(LaunchConfiguration("rviz")))
     recorder = Node(package="navrl_nodes", executable="demo_recorder_node",
                     name="demo_recorder", output="screen",
                     parameters=[{"use_sim_time": True, "out_path": out_csv}])
@@ -102,7 +110,8 @@ def generate_launch_description() -> LaunchDescription:
                                    "posts": POSTS.ravel().tolist()}])
 
     stack = TimerAction(period=4.0,
-                        actions=[tracker, mpc, cbf, viz, director, recorder, supervisor])
+                        actions=[tracker, mpc, cbf, viz, director, recorder,
+                                 supervisor, rviz])
     send_goal = TimerAction(period=goal_delay, actions=[ExecuteProcess(
         cmd=["ros2", "topic", "pub", "-1", "/goal_pose",
              "geometry_msgs/PoseStamped", GOAL_MSG],
@@ -113,6 +122,8 @@ def generate_launch_description() -> LaunchDescription:
                               description="'rl' = supervised; anything else = fixed"),
         DeclareLaunchArgument("gui", default_value="true",
                               description="false runs gzserver only (headless)"),
+        DeclareLaunchArgument("rviz", default_value="true",
+                              description="open rviz with the safety-field view"),
         DeclareLaunchArgument("auto_goal", default_value="true"),
         DeclareLaunchArgument("goal_delay", default_value="8.0"),
         DeclareLaunchArgument("model_path", default_value=DEFAULT_MODEL),
