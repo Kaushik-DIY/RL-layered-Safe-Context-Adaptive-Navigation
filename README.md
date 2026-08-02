@@ -143,9 +143,5 @@ video is. Everything else regenerates from the scripts above.
 
 ## Design notes worth reading first
 
-- **`docs/final_demo.md`** — the route, the metrics, and why the minimum speed is a
-  misleading statistic.
-- **`docs/final_gazebo.md`** — the 3D build, and four bugs it surfaced that are easy to
-  reintroduce.
 - **`docs/architecture.md`** — the three layers and why the safety filter is not tunable
   by the policy.
