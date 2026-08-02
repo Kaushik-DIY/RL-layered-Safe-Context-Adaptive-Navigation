@@ -51,15 +51,3 @@ cues that no single fixed rule expresses.
   additive value shows at crossings, crowds, and occluded corners.)
 - **Held-out T-junction** (never trained): 4/12 violations, better than every fixed/
   hand baseline except the crawling density heuristic — evidence of generalization.
-
-## Scope note — the interferer stress test
-
-One scenario, `interferer` (a curious bystander who *continuously follows* the robot),
-remains hard for every method (trained 11/12, always-max 12/12; density "wins" only by
-crawling at 36 s and getting mobbed). This is an adversarial robustness probe, not a
-representative industrial task — real interactions are oncoming/crossing/ passing, all
-handled well. It is reported separately, analogous to the S5 adversarial battery, and
-its correct resolution (route-around rather than slow-down) is noted as future work.
-
-Reproduce: `python scripts/eval_industrial.py experiments/models/ppo_ind_C_s0_full_final.zip 12`.
-Figures: `industrial_pareto.png`, `industrial_compliance.png`. Data: `s4_industrial_full.csv`.
