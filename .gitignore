@@ -34,6 +34,7 @@ runs/
 experiments/results/*.csv
 experiments/results/*.parquet
 experiments/results/*.pkl
+experiments/results/*.json
 !experiments/results/.gitkeep
 
 # --- Media / run logs (never committed) ---

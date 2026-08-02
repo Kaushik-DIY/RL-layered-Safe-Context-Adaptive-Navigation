@@ -30,7 +30,10 @@ identity never rests on colour alone.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import matplotlib
 matplotlib.use("Agg")
@@ -178,8 +181,38 @@ def panel_adapt(ax, beh):
     _bare(ax)
 
 
+BEH_CACHE = Path("experiments/results/final_behaviour.json")
+
+
+def behaviour():
+    """Per-station response of all three arms, measured through the same gate.
+
+    Computed here rather than tracked as a data file: the figure is then reproducible
+    from the repo alone, and the only output this project version-controls stays the
+    finished video. Cached because it costs about two minutes of controller time.
+    """
+    if BEH_CACHE.exists():
+        return json.loads(BEH_CACHE.read_text())
+    import verify_final as F
+    from core.common.platform import load_platform
+    from core.rl.supervisor import SupervisorPolicy
+    print("measuring per-station behaviour (once; cached afterwards) ...")
+    plat, scene = load_platform("industrial"), F.build_scene()
+    sup = SupervisorPolicy(F.MODEL, platform="industrial",
+                           walls=scene["walls"], posts=scene["posts"])
+    out = {}
+    for arm in F.ARMS:
+        rec = []
+        F.run(arm, plat, scene, sup=sup if arm == "ours" else None, record=rec)
+        out[arm] = F.encounters(rec)
+        print(f"  {arm:<13} "
+              + "  ".join(f"{e['v_pass']:.2f}/{e['lat']:.2f}" for e in out[arm]))
+    BEH_CACHE.write_text(json.dumps(out, indent=1))
+    return out
+
+
 def main() -> None:
-    beh = json.loads(Path("experiments/results/final_behaviour.json").read_text())
+    beh = behaviour()
 
     fig = plt.figure(figsize=(13.6, 9.2), facecolor=SURFACE)
     gs = fig.add_gridspec(2, 2, left=0.185, right=0.965, top=0.775, bottom=0.125,
