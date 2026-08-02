@@ -37,54 +37,23 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from core.common.platform import load_platform
-from core.demo import aisle_scene as sc
-from core.demo.industrial_amr import COMMISSIONED
-from core.demo.site_zones import mark_zones
+from core.demo.final_route import (GOAL_X, HALF_W, STATION_LABEL,  # noqa: F401
+                                   STATION_X, ZONE_X, build, site_zones)
 from core.rl.supervisor import SupervisorPolicy
 
 from verify_commissioning import (ARMS, MODEL,  # noqa: E402
                                   commissioning_ledger as _ledger,
                                   run as _run)
 
-# ----------------------------------------------------------------------- the route
-HALF_W = 2.50            # 5.0 m two-way aisle: passing a pedestrian needs real room
-GOAL_X = 31.0
-STATION_X = (7.5, 16.0, 24.5)
-PICKER_LANE = 0.75       # both pickers walk the NORTH half, so both escapes are SOUTH
-PICKER_SPEED = 1.25
-PICKER_LEAD, PICKER_TRAIL = 7.0, 9.0
-
-STATIONS = [
-    # A: the opening is on the SOUTH side -- the side the machine would have to swerve
-    #    into to get round the picker. That is what makes it refuse.
-    sc.Station("blind_clear", STATION_X[0], side=-1.0),
-    sc.Station("head_on", STATION_X[0], lane=PICKER_LANE, speed=PICKER_SPEED,
-               lead=PICKER_LEAD, trail=PICKER_TRAIL),
-    # B: a real 4-way, so the crossing worker enters and leaves through openings
-    sc.Station("junction", STATION_X[1]),
-    # C: no opening at all -- solid racking both sides, so the room is real
-    sc.Station("head_on", STATION_X[2], lane=PICKER_LANE, speed=PICKER_SPEED,
-               lead=PICKER_LEAD, trail=PICKER_TRAIL),
-]
-STATION_LABEL = ["picker head-on AND a blind\ncross-aisle on the escape side",
-                 "4-way junction, occluded\nworker crosses",
-                 "picker head-on, solid\nracking both sides"]
-
-# only the two mapped openings are marked; C has nothing to mark
-ZONE_X = (STATION_X[0], STATION_X[1])
-
-
-def build_scene():
-    return sc.build(STATIONS, goal_x=GOAL_X, half_w=HALF_W)
-
-
-def site_zones(plat):
-    return mark_zones(ZONE_X, plat, sc.REVEAL_DISTANCE, COMMISSIONED, sc.MOUTH)
+# The route itself lives in `core/demo/final_route.py`, because the Gazebo world, the
+# scene director and this gate all have to agree about it. Anything that draws the route
+# imports it from there; nothing redefines it.
+build_scene = build
 
 
 def commissioning_ledger(plat):
-    """This route marks only TWO zones -- station C has no cross-aisle to mark -- so the
-    count has to come from ZONE_X, not from the commissioning route's three."""
+    """This route marks only TWO zones -- station C has no cross-aisle -- so the count
+    has to come from ZONE_X, not from the commissioning route's three."""
     return _ledger(plat, zones=site_zones(plat))
 
 

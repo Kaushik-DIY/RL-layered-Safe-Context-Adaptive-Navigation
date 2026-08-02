@@ -26,9 +26,17 @@ class CbfNode(Node):
     def __init__(self):
         super().__init__("cbf_node")
         self.declare_parameter("platform", "tb3")   # 'industrial' = MiR-class stack
+        # The RELAXED governor, adopted 2026-08-01 and used by every recent 2D result:
+        # the protective field is the real guarantee, so the filter may plan on the
+        # PHYSICAL brake rather than the service brake it reserves for the certified
+        # stop. Empty dict == the strict, frozen parameters.
+        self.declare_parameter("relaxed", True)
         plat = load_platform(str(self.get_parameter("platform").value))
         self.robot = plat.robot
         self.cbf = plat.cbf
+        if bool(self.get_parameter("relaxed").value):
+            import dataclasses
+            self.cbf = dataclasses.replace(self.cbf, sigma=1.0, a_brake=1.2, gamma=0.8)
         self.filt = CbfFilter(self.robot, self.cbf)
         self.declare_parameter("stale_s", 0.5)
 

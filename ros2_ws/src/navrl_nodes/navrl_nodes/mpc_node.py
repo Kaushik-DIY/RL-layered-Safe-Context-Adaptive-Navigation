@@ -47,6 +47,7 @@ class MpcNode(Node):
         self._u_prev = np.zeros(2)
         self._state = None            # [x, y, yaw, v, omega]
         self._goal = None
+        self._arrived = False
         self._humans = np.zeros((0, 4))
         self._params = (None, None)   # (v_max_cmd, d_margin_cmd)
 
@@ -66,6 +67,7 @@ class MpcNode(Node):
 
     def _on_goal(self, msg: PoseStamped) -> None:
         self._goal = np.array([msg.pose.position.x, msg.pose.position.y])
+        self._arrived = False           # a NEW goal is the only thing that un-arrives it
         self.get_logger().info(f"goal set: {self._goal.round(2).tolist()}")
 
     def _on_humans(self, msg: Float32MultiArray) -> None:
@@ -117,8 +119,17 @@ class MpcNode(Node):
     def _tick(self) -> None:
         if self._state is None or self._goal is None:
             return  # wait for odom + goal
-        if float(np.hypot(*(self._goal - self._state[:2]))) < GOAL_TOL:
-            self.pub_cmd.publish(Twist())        # arrived: propose zero
+        # LATCHED arrival. Proposing zero only while inside the tolerance is not enough:
+        # the machine coasts back out of the 0.15 m circle, the controller re-engages and
+        # drives at it again, and it oscillates on the spot. Measured, that thrash was a
+        # -5.17 m/s^2 transient on a 1.20 m/s^2 machine, 0.3 s AFTER arrival -- harmless
+        # to the mission but it looks broken on camera and it poisons any acceleration
+        # statistic taken over the whole recording.
+        if self._arrived or float(np.hypot(*(self._goal - self._state[:2]))) < GOAL_TOL:
+            if not self._arrived:
+                self._arrived = True
+                self.get_logger().info("goal reached; holding station")
+            self.pub_cmd.publish(Twist())
             self._u_prev = np.zeros(2)
             return
 

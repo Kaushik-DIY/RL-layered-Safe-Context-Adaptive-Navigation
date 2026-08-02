@@ -1,0 +1,78 @@
+# The final demo in Gazebo
+
+3D proof that the **same** control stack that produced the 2D video drives a physically
+simulated differential-drive AMR through the same route.
+
+```bash
+source /opt/ros/humble/setup.bash
+cd ros2_ws && colcon build --packages-select navrl_nodes --symlink-install
+source install/setup.bash && cd ..
+export PYTHONPATH=$PWD:$PYTHONPATH
+
+PYTHONPATH=$PWD .venv-navrl/bin/python scripts/gen_final_world.py   # world is GENERATED
+ros2 launch navrl_nodes final_demo.launch.py                        # supervised, with GUI
+ros2 launch navrl_nodes final_demo.launch.py gui:=false             # headless
+PYTHONPATH=$PWD .venv-navrl/bin/python scripts/check_final_gazebo.py
+```
+
+## Nothing here is a re-implementation
+
+The ROS nodes import `core.*` exactly as the 2D harness does — same ONNX policy, same
+`MpcController`, same `CbfFilter`, same `sight_limit` guards. The world is generated from
+the same `core.demo.final_route` the 2D gate builds its scene from, so the geometry Gazebo
+renders and the geometry the policy is told about cannot drift apart. That is the whole
+value of the 3D run: it is evidence about the *implementation*, not a second model of it.
+
+`rl_supervisor_node` is a faithful port of the 2D loop, **and the rates matter**: the
+policy is queried at 2 Hz but the sight floor, the lateral rule and the reachable-cap
+clamp run at the full 10 Hz control rate. Running the guards at 2 Hz would let the cap
+fall 0.30 m/s between clamps — five times the deceleration the machine can deliver.
+
+## Measured (headless run, checked against the 2D gate)
+
+| | 2D | Gazebo |
+|---|---|---|
+| mission time | 32.5 s | **31.8 s** (−2 %) |
+| worst barrier margin | +0.41 m | **+0.44 m** |
+| protective stops | 0 | **0** |
+| closest approach | — | 0.77 m |
+| peak decel / accel | — | −1.12 / +0.87 m/s² (limit 1.20) |
+
+| station | 2D v@pass / offset | Gazebo v@pass / offset |
+|---|---|---|
+| A blind cross-aisle on the escape side | 0.58 / 0.02 | **0.52 / 0.01** |
+| B 4-way junction, occluded worker | 0.80 / 0.01 | 0.90 / 0.01 |
+| C plain aisle, solid racking | 1.20 / 1.12 | **1.19 / 1.13** |
+
+**The behaviour transfers.** It refuses the width beside the blind opening and slows; it
+steps aside 1.13 m in the plain aisle and keeps its speed. All 10 checks pass.
+
+## Four bugs this build found, all worth keeping fixed
+
+1. **XML comments cannot contain `--`.** The world header is prose, and a stray double
+   hyphen made Gazebo reject the file. The generator now parses its own output before
+   writing, so it fails in Python rather than in the simulator.
+2. **Gazebo model names cannot carry `@`.** The cue names are `head@24`; those go through
+   SDF, topics and the `SetEntityState` service. `sdf.safe_name()` is applied by both the
+   generator and the director so they always agree.
+3. **The director assumed `cue['present_distance']`,** which only the showcase scene has —
+   the aisle scenes carry `present_time`. It raised `KeyError` on the first cue and took
+   the whole director timer down with it, so no worker ever moved.
+4. **Decorative geometry with a collision box, in the robot's stopping pose.** The pick
+   station kerb spanned x 31.5–32.7 while the machine finishes with its nose at 31.5, and
+   it drove into it — a −7.55 m/s² spike the check caught. The planner is never told about
+   that model, so anything it can collide with is a bug by construction: it is now clear
+   of the stopping pose *and* visual-only.
+
+Plus one behaviour fix: **`mpc_node` now latches arrival.** Proposing zero only while
+inside the 0.15 m tolerance is not enough — the machine coasts back out, the controller
+re-engages, and it oscillates on the spot. Harmless to the mission but it looks broken on
+camera and it poisons any statistic taken over the whole recording.
+
+## Recording it
+
+The GUI camera tracks the AMR over the whole 31 m. Record from the goal being published
+until the `goal reached; holding station` log line — the recorder keeps writing afterwards
+and **the recording length is not the mission time** (a healthy 31.8 s run reads as 77 s of
+file). `check_final_gazebo.py` measures to arrival for exactly this reason, including the
+acceleration statistics.

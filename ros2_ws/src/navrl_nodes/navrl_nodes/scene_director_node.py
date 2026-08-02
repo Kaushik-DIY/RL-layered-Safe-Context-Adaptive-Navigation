@@ -19,20 +19,35 @@ import math
 
 import rclpy
 from gazebo_msgs.srv import SetEntityState
+
+from core.demo.sdf import safe_name
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 
-from core.demo.showcase_scene import CUES, should_fire, staged_pose, walk_path
+def _load_scene(name):
+    """`scene:=final` drives the final route; anything else keeps the showcase, so the
+    previously-recorded demo still launches unchanged."""
+    if name == "final":
+        from core.demo.aisle_scene import should_fire, staged_pose, walk_path
+        from core.demo.final_route import CUES
+        return CUES, should_fire, staged_pose, walk_path
+    from core.demo.showcase_scene import (CUES, should_fire, staged_pose,  # noqa: E501
+                                          walk_path)
+    return CUES, should_fire, staged_pose, walk_path
 
 
 class SceneDirectorNode(Node):
     def __init__(self):
         super().__init__("scene_director_node")
+        self.declare_parameter("scene", "showcase")
         self.declare_parameter("rate_hz", 50.0)   # match libgazebo_ros_state so pose steps stay small
         self.declare_parameter("bob_amplitude", 0.035)   # fake walk cycle
         self.declare_parameter("bob_hz", 1.9)
         self.declare_parameter("enabled", True)
 
+        global CUES, should_fire, staged_pose, walk_path
+        CUES, should_fire, staged_pose, walk_path = _load_scene(
+            str(self.get_parameter("scene").value))
         self._fired = [None] * len(CUES)
         self._state = None            # (x, v)
         self._t0 = None
@@ -78,12 +93,18 @@ class SceneDirectorNode(Node):
                 # robot present_distance away, whatever speed the robot is doing
                 if should_fire(cue, robot_x, robot_v):
                     self._fired[i] = now
+                    # the two scenes describe presentation differently (showcase by
+                    # DISTANCE, the aisle scenes by TIME); log whichever this cue has
+                    # rather than assuming, which used to raise KeyError on first fire
+                    # and take the whole director timer down with it
+                    how = ("present_distance" if "present_distance" in cue
+                           else "present_time")
                     self.get_logger().info(
-                        f"cue '{cue['name']}' fired: robot x={robot_x:.2f} v={robot_v:.2f} "
-                        f"-> presented at {cue['present_distance']:.2f} m")
+                        f"cue '{cue['name']}' fired: robot x={robot_x:.2f} "
+                        f"v={robot_v:.2f} -> {how} {cue[how]:.2f}")
                 else:
                     x, y, yaw = staged_pose(cue)
-                    self._place(cue["name"], x, y, yaw)
+                    self._place(safe_name(cue["name"]), x, y, yaw)
                     continue
             el = now - self._fired[i]
             x, y, yaw, done = walk_path(cue, el)
@@ -91,7 +112,7 @@ class SceneDirectorNode(Node):
             # so there is no skeletal animation to play
             z = 0.0 if done else abs(math.sin(2.0 * math.pi * bob_hz * el)) * amp
             sway = 0.0 if done else math.sin(2.0 * math.pi * bob_hz * el) * 0.05
-            self._place(cue["name"], x, y, yaw + sway, z)
+            self._place(safe_name(cue["name"]), x, y, yaw + sway, z)
 
 
 def main(args=None) -> None:
