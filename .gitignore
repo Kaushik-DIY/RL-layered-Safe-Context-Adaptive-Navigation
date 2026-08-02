@@ -48,9 +48,11 @@ experiments/results/*.json
 *.jpeg
 *.log
 
-# The one output that ships: the finished demo. Everything else here is regenerable from
-# the scripts, and regenerable output does not belong in version control.
+# The outputs that ship: the finished 2D demo and the Gazebo recording. Everything else
+# here is regenerable from the scripts, and regenerable output does not belong in
+# version control.
 !experiments/results/final_demo.mp4
+!experiments/results/Gazebo_simulation_Demo.mp4
 
 # --- Build artifacts ---
 # setuptools writes ./build/ on any `pip install .`; it was committed once from exactly

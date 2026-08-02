@@ -27,8 +27,12 @@ gets there — see the demo.
 
 ## The demo
 
-**▶ [Download the demo video](https://github.com/Kaushik-DIY/RL-layered-Safe-Context-Adaptive-Navigation/raw/main/experiments/results/final_demo.mp4)** — 33 s, 1920×1080
+**▶ [Download the 2D demo](https://github.com/Kaushik-DIY/RL-layered-Safe-Context-Adaptive-Navigation/raw/main/experiments/results/final_demo.mp4)** — 33 s, 1920×1080
 (`experiments/results/final_demo.mp4`)
+
+There is also a **[3D Gazebo recording](https://github.com/Kaushik-DIY/RL-layered-Safe-Context-Adaptive-Navigation/raw/main/experiments/results/Gazebo_simulation_Demo.mp4)** of the same
+route — see [Running the Gazebo simulation](#running-the-gazebo-simulation) for what it
+shows and how to reproduce it.
 
 Two machines run the same route with the same people in it: a hand-commissioned industrial
 AMR on top, this work below. The route puts **the same pedestrian encounter twice**, and
@@ -50,8 +54,19 @@ this route is within scope.
 
 ## Running the Gazebo simulation
 
+**▶ [Download the Gazebo recording](https://github.com/Kaushik-DIY/RL-layered-Safe-Context-Adaptive-Navigation/raw/main/experiments/results/Gazebo_simulation_Demo.mp4)** — 27 s, 1568×884
+(`experiments/results/Gazebo_simulation_Demo.mp4`)
+
 The 3D build runs the **identical** control stack — same policy, same MPC, same CBF — on a
-physically simulated differential-drive robot. It reproduces the 2D result to within 2 %.
+physically simulated differential-drive robot, and reproduces the 2D result to within 2 %:
+32.5 s against 31.8 s, the same worst-case safety margin, and the same behaviour at each
+encounter. That is the point of it — evidence about the *implementation*, not a second
+model of the same idea.
+
+Two windows are recorded. Gazebo is the physical truth; **rviz is the more informative
+one**, because speed differences read badly in 3D — 1.2 against 0.6 m/s looks much the
+same on camera — while the protective field does not, since it scales with v². Watch the
+ring swell and shrink as the machine changes speed.
 
 ### Requirements
 
@@ -106,11 +121,6 @@ PYTHONPATH=$PWD python3 scripts/check_final_gazebo.py
 
 Prints mission time, worst safety margin, protective stops and the per-encounter response
 against the 2D reference, and exits non-zero if any of them drifted.
-
-> **Watch rviz, not just Gazebo.** Speed differences read badly in 3D — 1.2 against
-> 0.6 m/s looks much the same on camera — but the protective field does not, because it
-> scales with v². The rviz view rides with the robot and colours the field by the safety
-> margin; watch it swell and shrink as the machine changes speed.
 
 ---
 
