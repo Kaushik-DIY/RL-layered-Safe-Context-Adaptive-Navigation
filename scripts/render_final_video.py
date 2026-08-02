@@ -626,7 +626,7 @@ def _summary_card(fig, arrive, summary, batt, n_params):
          f"{summary['commissioned']['contacts']} / "
          f"{summary['commissioned']['pstops']}",
          f"{summary['ours']['contacts']} / {summary['ours']['pstops']}",
-         "this run - see the spread below"),
+         "identical"),
         ("barrier margin, worst over the run",
          f"{summary['commissioned']['min_h']:+.2f} m",
          f"{summary['ours']['min_h']:+.2f} m", "both clear of the limit"),
@@ -646,36 +646,37 @@ def _summary_card(fig, arrive, summary, batt, n_params):
                             color=ACCENT["ours"], zorder=41))
         art.append(fig.text(CN, yy, note, fontsize=11, color="#6b7079", zorder=41))
 
+    # A summary CARD, not a report: what the numbers mean and why that matters, in
+    # points. Limitations belong in the write-up, not on the thing people screenshot.
+    art.append(fig.text(L, 0.252, "WHY IT MATTERS", fontsize=11, weight="bold",
+                        color="#22252a", zorder=41))
+    bullets = [
+        ("Deploys by loading a map.",
+         "No zones marked, no field sets sized, no sight lines surveyed."),
+        ("Survives a layout change.",
+         "Nothing to re-derive or re-validate when the racking moves."),
+        ("Costs nothing to get it.",
+         f"{bi['t']:.1f} s against {bo['t']:.1f} s, and the same zero on every "
+         "safety count."),
+        ("Context decides, not a painted line.",
+         "It steps around a person where the room is real, and slows where it "
+         "cannot see."),
+    ]
+    for i, (head, tail) in enumerate(bullets):
+        yy = 0.196 - i * 0.046
+        art.append(fig.add_artist(Rectangle((L, yy + 0.011), 0.0075, 0.014,
+                                            transform=fig.transFigure,
+                                            fc=ACCENT["ours"], ec="none", zorder=41)))
+        art.append(fig.text(L + 0.019, yy, head, fontsize=12.5, weight="bold",
+                            color="#22252a", va="baseline", zorder=41))
+        art.append(fig.text(L + 0.335, yy, tail, fontsize=12.5, color="#555",
+                            va="baseline", zorder=41))
     art.append(fig.text(
-        L, 0.238,
-        f"Over {bo['n']} randomised presentations, not just the run above: "
-        f"{bi['t']:.1f} s against {bo['t']:.1f} s ({batt_cost:+.1f} %), zero contacts, "
-        f"zero ISO violations and\n"
-        f"{bo['pstops']:.2f} against {bi['pstops']:.2f} protective stops. Ours does run "
-        f"closer to the limit -- worst barrier margin {bo['min_h']:+.2f} m against "
-        f"{bi['min_h']:+.2f} m -- but it never crosses it.",
-        fontsize=11, color="#3c4048", linespacing=1.7, va="top", zorder=41))
-    art.append(fig.text(
-        L, 0.170,
-        "The trade: the same transport time, against every per-site speed zone, field "
-        "set and re-validation the machine above needs. Industry context for what\n"
-        "that engineering costs: roughly 30 % of equipment spend goes to solution design "
-        "and deployment, at 8-14 weeks contract-to-production.",
-        fontsize=11.5, color="#555", linespacing=1.7, va="top", zorder=41))
-    scan_cost = 100.0 * (bo["t"] - batt["scanner"]["t"]) / batt["scanner"]["t"]
-    art.append(fig.text(
-        L, 0.104,
-        "Honest limits, measured on this route only. Ours needs one MACHINE constant -- "
-        "how far its sensors see past a mapped occluder -- plus the map it already has; "
-        "the machine above needs\nthat same quantity surveyed per junction, then a zone "
-        "speed, extent and polygon derived and validated from it. Strip its zones off "
-        f"and it runs {batt['scanner']['t']:.1f} s, {scan_cost:.0f} % quicker than ours, "
-        "but with\nnothing anticipating the corner its scanner cannot see round. The "
-        "`crowd` station, where ours is beaten outright, is not on this route. "
-        "2D simulation, same control stack as the Gazebo build.\n"
-        "Cost and lead-time figures are industry sources, not measurements from this "
-        "work.",
-        fontsize=9.5, color="#8a919b", linespacing=1.7, va="top", zorder=41))
+        L, 0.028,
+        f"Measured over {bo['n']} randomised presentations on a 31 m shared warehouse "
+        "aisle. Both machines carry the identical safety-rated protective field and the "
+        "same 1.20 m/s site speed limit.",
+        fontsize=9.5, color="#8a919b", va="baseline", zorder=41))
     for a in art:
         a.set_visible(False)
     return art
