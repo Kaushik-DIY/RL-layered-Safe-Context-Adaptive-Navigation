@@ -18,7 +18,14 @@ __pycache__/
 *.pth
 checkpoints/
 logs/
-experiments/models/
+# A directory exclusion cannot be undone by a later negation -- git will not even descend
+# into it -- so the models directory is excluded by CONTENTS, which leaves the one file
+# the demo actually needs re-includable below.
+experiments/models/*
+
+# The deployed policy is 296 KB and every run instruction in the README depends on it.
+# Without it the repo documents a demo nobody else can start.
+!experiments/models/ppo_ind_C_s0_full_final.onnx
 
 # --- TensorBoard runs ---
 runs/
@@ -37,6 +44,10 @@ experiments/results/*.pkl
 *.jpeg
 *.log
 
+# The one output that ships: the finished demo. Everything else here is regenerable from
+# the scripts, and regenerable output does not belong in version control.
+!experiments/results/final_demo.mp4
+
 # --- Gazebo / ROS build artifacts ---
 ros2_ws/build/
 ros2_ws/install/
@@ -44,8 +55,8 @@ ros2_ws/log/
 *.bag
 rosbags/
 
-# --- Excluded from this initial commit (added later, deliberately) ---
-/README.md
+# --- Deliberately not tracked ---
+# (README.md was excluded for the initial commit; it is the project's front door now.)
 docs/project_summary_CV.md
 
 # --- OS / editor ---
