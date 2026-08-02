@@ -54,7 +54,7 @@ C_DERIVED = "#1b6ca8"      # everything the robot worked out for itself
 
 ACCENT = {"commissioned": "#2e8b57", "ours": "#1b6ca8"}
 TITLE = {"commissioned": "COMMISSIONED INDUSTRIAL AMR",
-         "ours": "MPC + CBF + LEARNED SUPERVISOR"}
+         "ours": "MPC + CBF + RL SUPERVISED"}
 SUBTITLE = {"commissioned": "scanner field sets + hand-marked speed zones",
             "ours": "same map, nothing marked on it"}
 STATE_COL = {NORMAL: "#2e8b57", WARNING: "#e8a317", STOPPED: "#cc2b1d"}
@@ -479,7 +479,8 @@ def main() -> None:
     ap.add_argument("--fps", type=int, default=20)
     ap.add_argument("--gif", action="store_true")
     ap.add_argument("--still", type=float, default=None)
-    ap.add_argument("--card", type=float, default=5.0, help="seconds of summary card")
+    ap.add_argument("--card-image", action="store_true",
+                    help="write only the summary card PNG and exit")
     ap.add_argument("--name", default="final_demo")
     ap.add_argument("--fresh", action="store_true", help="ignore the replay cache")
     ap.add_argument("--battery", type=int, default=6,
@@ -497,7 +498,6 @@ def main() -> None:
                                                 cache=not args.fresh,
                                                 n_battery=args.battery)
 
-    n_card = int(args.card * args.fps)
     fig, axes = plt.subplots(2, 1, figsize=(16.0, 9.0), gridspec_kw=dict(hspace=0.06))
     fig.patch.set_facecolor("white")
     p_i = Panel(axes[0], traj["commissioned"], plat, "commissioned", args.fps,
@@ -513,25 +513,30 @@ def main() -> None:
             ax.text(gate.STATION_X[k], Y_HI - 0.10, name, ha="center", va="top",
                     fontsize=6.6, color="#6b7079", linespacing=1.2)
 
-    fig.suptitle("Same warehouse, same people, same 31 m run - and the same pedestrian "
-                 "pass twice, where only the geometry differs",
-                 fontsize=12.5, weight="bold", x=0.010, ha="left", y=0.987)
+    fig.text(0.010, 0.983, "Safe Context-Adaptive Navigation for Industrial AMRs",
+             fontsize=15.5, weight="bold", ha="left", va="top", color="#22252a")
+    fig.text(0.010, 0.946,
+             "RL-supervised AMR against a hand-commissioned industrial AMR on an "
+             "identical shared warehouse aisle",
+             fontsize=9.5, ha="left", va="top", color="#6b7079")
+    # A legend, not a commentary: every line explains something actually on screen, and
+    # the two field descriptions sit together so they read as a pair.
     fig.text(0.010, 0.016,
-             "Solid rectangle = protective field, the room the machine needs to stop "
+             "Solid rectangle = protective field: the room the machine needs to stop "
              "from the speed it is doing (ISO 13855). BOTH machines carry the identical "
              "one. A SMALLER FIELD MEANS A SLOWER ROBOT, not a safer one.\n"
-             "Dashed amber = the warning field, which only the commissioned machine "
-             "carries. Red = engineering an integrator had to survey and enter for this "
-             "site. Blue = read off the map the robot already had.\n"
-             "Same picker twice. At the FIRST the escape side is an open cross-aisle, so "
-             "ours refuses to step into it and slows; at the THIRD it is solid racking, "
-             "so it steps aside and keeps its speed.\n"
-             "The commissioned machine slows at both, because slowing is all a warning "
-             "tier can do. Every machine is limited to its real acceleration, so speed "
-             "limits are ramped into, never stepped.",
+             "Dashed orange rectangle = the warning field, which only the commissioned "
+             "machine carries.\n"
+             "Red markings = manually marked zones. Blue line = learnt from the map.\n"
+             "ISO margin h = spare braking room: the gap to the person, less the "
+             "distance needed to stop, less the 0.30 m keep-out always reserved. "
+             "Below zero = too close to stop in time.\n"
+             "Lateral offset = how far the machine sits from the centre of the aisle. "
+             "It shows whether the machine steered around the picker, or only slowed "
+             "for them.",
              fontsize=8.0, family="monospace", va="bottom", color="#333")
-    # four footer lines need the extra bottom margin or the x-axis label lands on them
-    fig.subplots_adjust(left=0.030, right=0.988, top=0.915, bottom=0.150)
+    # five footer lines need the bottom margin, or the x-axis label lands on them
+    fig.subplots_adjust(left=0.030, right=0.988, top=0.905, bottom=0.175)
 
     fig.canvas.draw()
     for panel, npar in ((p_i, n_params), (p_o, 0)):
@@ -544,9 +549,22 @@ def main() -> None:
         kk = min(k, n_live - 1)
         p_i.draw(kk)
         p_o.draw(kk)
-        for a in card:
-            a.set_visible(k >= n_live)
         return []
+
+    def write_card(path):
+        """The summary is a separate deliverable now -- easier to drop into slides, and
+        it keeps the video to the thing worth watching."""
+        frame(n_live - 1)
+        for a in card:
+            a.set_visible(True)
+        fig.savefig(path, dpi=140)
+        for a in card:
+            a.set_visible(False)
+        print(f"wrote {path}")
+
+    if args.card_image:
+        write_card(OUT / f"{args.name}_summary.png")
+        return
 
     if args.still is not None:
         frame(int(args.still * args.fps))
@@ -555,12 +573,13 @@ def main() -> None:
         print(f"wrote {path}")
         return
 
-    n = n_live + n_card
+    n = n_live
     anim = animation.FuncAnimation(fig, frame, frames=n, blit=False,
                                    interval=1000 / args.fps)
     mp4 = OUT / f"{args.name}.mp4"
     anim.save(mp4, writer=animation.FFMpegWriter(fps=args.fps, bitrate=4600), dpi=120)
     print(f"wrote {mp4}  ({n} frames, {n / args.fps:.1f} s)")
+    write_card(OUT / f"{args.name}_summary.png")
     if args.gif:
         gif = OUT / f"{args.name}.gif"
         anim.save(gif, writer=animation.PillowWriter(fps=min(args.fps, 12)), dpi=80)

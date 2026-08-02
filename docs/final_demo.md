@@ -8,8 +8,19 @@ PYTHONPATH=$PWD .venv-navrl/bin/python scripts/verify_final.py 6      # the gate
 PYTHONPATH=$PWD .venv-navrl/bin/python scripts/render_final_video.py
 ```
 
-Outputs `experiments/results/final_demo.mp4`. Replay cached in `final_traj.pkl`;
-`--fresh` after changing anything upstream.
+Outputs `experiments/results/final_demo.mp4` (1920x1080, 20 fps, 32.9 s) **and**
+`final_demo_summary.png` — the results table is a separate 1920x1080 image, not a card
+tacked onto the end of the video, so it drops straight into slides. Regenerate just the
+image with `--card-image`. Replay cached in `final_traj.pkl`; `--fresh` after changing
+anything upstream.
+
+Titled **"Safe Context-Adaptive Navigation for Industrial AMRs"** / *RL-supervised AMR
+against a hand-commissioned industrial AMR on an identical shared warehouse aisle*.
+
+The footer is a **legend, not a commentary** — five lines, each explaining something
+actually on screen: the two fields, the red/blue markings, and the two panel readouts
+(`ISO margin h` and `lateral offset`). Anything that narrates what is about to happen was
+removed; the panels do that themselves.
 
 This supersedes `commissioning_demo` as the presentation cut. The earlier two are kept:
 `commissioning_demo` is the pure commissioning argument on a 3.5 m aisle, and
