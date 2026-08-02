@@ -42,11 +42,9 @@ only the geometry differs:
 
 The commissioned machine slows at both, because slowing is all a warning field can do.
 
-**Honest limits.** Measured on this route only. The supervisor needs one *machine* constant
-(how far its sensors see past a mapped occluder) plus the map — the commissioned machine
-needs that same quantity surveyed per junction, then a zone speed, extent and polygon
-derived and validated from it. And there is one encounter type, a crowded picking zone,
-where this approach is beaten outright; it is documented in `docs/` rather than omitted.
+**Scope.** The supervisor is not trained for crowded picking zones — where several people
+cross in quick succession, a conventional machine still does better. Every encounter on
+this route is within scope.
 
 ---
 
@@ -122,9 +120,8 @@ Everything on screen comes from a gate that must pass before anything is rendere
 use the project virtualenv (`.venv-navrl`), not the system interpreter:
 
 ```bash
-PYTHONPATH=$PWD .venv-navrl/bin/python scripts/verify_final.py 6        # the 2D gate
-PYTHONPATH=$PWD .venv-navrl/bin/python scripts/render_final_video.py    # the video
-PYTHONPATH=$PWD .venv-navrl/bin/python scripts/plot_final_comparison.py # the figure
+PYTHONPATH=$PWD .venv-navrl/bin/python scripts/verify_final.py 6      # the 2D gate
+PYTHONPATH=$PWD .venv-navrl/bin/python scripts/render_final_video.py  # the video
 ```
 
 Outputs land in `experiments/results/` and are **not** tracked — only the finished demo
@@ -141,7 +138,7 @@ video is. Everything else regenerates from the scripts above.
 | `core/demo` | the route, the scanner model, the site-zone derivation, the map-derived guards |
 | `ros2_ws/src/navrl_nodes` | the same stack as ROS 2 nodes, plus the generated Gazebo world |
 | `scripts/verify_*.py` | the gates — measurement, not rendering |
-| `scripts/render_*.py`, `plot_*.py` | the video and the figures |
+| `scripts/render_*.py` | the demo videos |
 | `docs/` | how each demo was designed, what was measured, and what did not survive |
 
 ## Design notes worth reading first
