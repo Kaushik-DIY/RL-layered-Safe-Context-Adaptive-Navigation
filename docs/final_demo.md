@@ -130,3 +130,35 @@ too. The map is what makes the difference decidable.
   a walker who never crosses `y = 0`).
 * **Verified: the commissioning route is unchanged by all of this** — 28.8 / 33.1 / 33.2 s
   with identical `min_h`. Re-run that check when touching `aisle_scene`.
+
+## The portfolio comparison figure
+
+`scripts/plot_final_comparison.py` → `experiments/results/final_comparison.png`
+(2312 × 1563). Four panels, each answering one question a sceptic would actually ask.
+
+| panel | question | metric | result |
+|---|---|---|---|
+| 1 | What does it save? | site parameters configured by hand | 11 / 13 / **0** |
+| 2 | Is it as safe? | worst stopping-distance margin vs the limit | +0.36 / +0.36 / **+0.37 m**, zero contacts and zero violations on all three |
+| 3 | What does it cost? | mission time, 6 presentations, mean ± spread | 31.4 ± 1.3 / 32.9 ± 0.1 / **32.6 ± 0.1 s**, plus the Gazebo run at 31.8 s |
+| 4 | Does it actually adapt? | speed at the same pedestrian pass, twice | 0.60 / 0.60 / **0.58** with a blind escape; 0.60 / 0.60 / **1.20** with a clear one |
+
+**Why these four and not others.** Panel 4 is the one the whole thing rests on: the same
+person, the same closing speed, and only the map differs. It is also the only panel where
+the three machines separate — which is the honest shape of the result, and why panels 1–3
+are there to establish that nothing was given up to get it.
+
+**Deliberately not plotted:** `min_h` as a bare "safety score" (the three are equal to
+within 0.01 m, so a bar chart of it would invite a difference that is not there — it is
+drawn against the *limit* instead); speed-at-pass on its own (flatters us at station C and
+says nothing at A); and anything from the `crowd` encounter, which is off this route and
+where ours is beaten outright — stated in the figure's own footnote rather than omitted.
+
+**Colour** is slots 1–3 of the data-viz reference palette, unchanged, because those three
+are documented as clearing the all-pairs colour-blindness floors in both modes — which is
+the case that applies to small multiples. They are *not* re-picked to match the video's
+green and blue: the palette is validated as a set and re-stepping it by eye is the mistake
+the method exists to prevent. Every bar is direct-labelled, so identity never rests on
+colour alone. **Note:** the skill's validator is a Node script and there is no JS runtime
+on this machine, so the palette was taken pre-validated rather than re-checked — if you
+change a colour, install Node and re-run `scripts/validate_palette.js` before shipping.
