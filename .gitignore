@@ -6,8 +6,11 @@ __pycache__/
 .ipynb_checkpoints/
 
 # --- Virtual environments (project-local, distinctly named) ---
-.venv-navrl/
-.venv/
+# NO trailing slash. `.venv-navrl/` matches DIRECTORIES ONLY, so a symlink of that name
+# escaped it, was committed by `git add -A`, and on merge git wrote the symlink into the
+# checkout pointing at its own path -- replacing the real virtualenv with a self-loop.
+.venv-navrl
+.venv
 
 # --- Trained models & checkpoints (large binaries; distributed separately) ---
 # NOTE: an inline comment must NOT share a line with a pattern -- git treats the

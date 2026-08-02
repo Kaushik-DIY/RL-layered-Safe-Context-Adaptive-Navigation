@@ -15,7 +15,11 @@ readme = "README.md"
 dependencies = []
 
 [tool.setuptools]
-packages = ["core", "core.common", "core.mpc", "core.cbf", "core.sim2d", "core.rl"]
+# core.demo was missing, so a non-editable `pip install .` produced a package that
+# could not run the demo -- the editable install used everywhere masked it by
+# putting the source tree on the path. Keep this list in step with core/*/.
+packages = ["core", "core.common", "core.mpc", "core.cbf", "core.sim2d",
+            "core.rl", "core.demo"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
