@@ -17,10 +17,41 @@ anything upstream.
 Titled **"Safe Context-Adaptive Navigation for Industrial AMRs"** / *RL-supervised AMR
 against a hand-commissioned industrial AMR on an identical shared warehouse aisle*.
 
-The footer is a **legend, not a commentary** — five lines, each explaining something
-actually on screen: the two fields, the red/blue markings, and the two panel readouts
+The footer is a **legend, not a commentary** — four lines, each explaining something
+actually on screen: the two fields plus the red/blue markings, then the two panel readouts
 (`ISO margin h` and `lateral offset`). Anything that narrates what is about to happen was
 removed; the panels do that themselves.
+
+**Footer length is not free.** The panels are aspect-equal and height-limited, so map
+width = (x-range / y-range) x panel height — every extra footer line and every bit of title
+margin comes straight off the width of the picture. Five lines cost about 12 % of the map;
+four does not.
+
+## The 13 configured parameters
+
+`commissioning_ledger()` reads them out of the configuration the simulated commissioned
+machine actually runs on, so the counter on screen cannot drift from the model.
+
+| # | parameter | value | what the integrator establishes |
+|---|---|---|---|
+| 1 | site speed limit | 1.20 m/s | aisle width, traffic mix, B56.5 hazard-zone rule |
+| 2 | service braking rate | 0.80 m/s² | measured loaded, on this floor |
+| 3 | system response time | 0.50 s | scanner + controller + brake engagement |
+| 4 | speed-measurement factor | 1.10 | odometry tolerance, ISO 13855 chain |
+| 5 | hard keep-out | 0.30 m | footprint tolerance + localisation error |
+| 6 | protective field length | 2.05 m | stopping distance at 1.20 m/s, re-sized per tier |
+| 7 | protective field width | 0.94 m | footprint + load overhang + tracking tolerance |
+| 8 | warning field length | 5.12 m | pre-slow before the protective tier trips |
+| 9 | warning field width | 2.20 m | see the aisle, ignore the side racking |
+| 10 | warning-tier speed | 0.60 m/s | must fit the reduced field set |
+| 11 | resume dwell | 3.0 s | site rule after a protective stop clears |
+| 12 | zone J-01 speed / extent | 0.79 m/s over 3.3 m | corner sight line surveyed |
+| 13 | zone J-02 speed / extent | 0.79 m/s over 3.3 m | corner sight line surveyed |
+
+**The count is per-route and was wrong once.** `commissioning_ledger()` used to take its
+zone rows from the *commissioning* route's three cross-aisles, so this video claimed 14
+where it configures 13 — station C is plain aisle and has nothing to mark. It now takes the
+zones of the route being shown. Every additional junction adds a row, which is the point.
 
 This supersedes `commissioning_demo` as the presentation cut. The earlier two are kept:
 `commissioning_demo` is the pure commissioning argument on a 3.5 m aisle, and

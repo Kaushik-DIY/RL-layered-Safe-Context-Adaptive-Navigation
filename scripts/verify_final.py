@@ -42,7 +42,8 @@ from core.demo.industrial_amr import COMMISSIONED
 from core.demo.site_zones import mark_zones
 from core.rl.supervisor import SupervisorPolicy
 
-from verify_commissioning import (ARMS, MODEL, commissioning_ledger,  # noqa: E402
+from verify_commissioning import (ARMS, MODEL,  # noqa: E402
+                                  commissioning_ledger as _ledger,
                                   run as _run)
 
 # ----------------------------------------------------------------------- the route
@@ -79,6 +80,12 @@ def build_scene():
 
 def site_zones(plat):
     return mark_zones(ZONE_X, plat, sc.REVEAL_DISTANCE, COMMISSIONED, sc.MOUTH)
+
+
+def commissioning_ledger(plat):
+    """This route marks only TWO zones -- station C has no cross-aisle to mark -- so the
+    count has to come from ZONE_X, not from the commissioning route's three."""
+    return _ledger(plat, zones=site_zones(plat))
 
 
 def run(arm, plat, scene, sup=None, jitter=0.0, record=None):

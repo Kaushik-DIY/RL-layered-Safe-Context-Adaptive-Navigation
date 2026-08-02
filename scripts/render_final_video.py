@@ -65,7 +65,7 @@ STATE_COL = {NORMAL: "#2e8b57", WARNING: "#e8a317", STOPPED: "#cc2b1d"}
 RACK_DEPTH = 0.90            # drawn racking depth; the 5 m aisle makes the panel squat
 # The aspect-equal panel is height-limited, so the map's WIDTH is (x-range / y-range) x
 # panel height and a wider map eats the gutter the instruments live in.
-Y_LO, Y_HI = -5.2, 6.1       # headroom above the side aisles for the station callouts
+Y_LO, Y_HI = -5.0, 5.8       # just enough for the +/-4.75 m side arms + callouts
 
 
 def _gate():
@@ -265,7 +265,7 @@ class Panel:
         fig.text(X(0.06), Y(0.875), f"{n_params}", transform=T, fontsize=17,
                  weight="bold", color=col, va="top")
         fig.text(X(0.06), Y(0.800),
-                 "site parameters\nconfigured by hand" if n_params
+                 "site parameters\nconfigured manually" if n_params
                  else "nothing configured\nfor this site",
                  transform=T, fontsize=7.0, color=col, va="top", linespacing=1.25)
 
@@ -526,8 +526,8 @@ def main() -> None:
              "from the speed it is doing (ISO 13855). BOTH machines carry the identical "
              "one. A SMALLER FIELD MEANS A SLOWER ROBOT, not a safer one.\n"
              "Dashed orange rectangle = the warning field, which only the commissioned "
-             "machine carries.\n"
-             "Red markings = manually marked zones. Blue line = learnt from the map.\n"
+             "machine carries.  Red markings = manually marked zones.  "
+             "Blue line = learnt from the map.\n"
              "ISO margin h = spare braking room: the gap to the person, less the "
              "distance needed to stop, less the 0.30 m keep-out always reserved. "
              "Below zero = too close to stop in time.\n"
@@ -535,8 +535,10 @@ def main() -> None:
              "It shows whether the machine steered around the picker, or only slowed "
              "for them.",
              fontsize=8.0, family="monospace", va="bottom", color="#333")
-    # five footer lines need the bottom margin, or the x-axis label lands on them
-    fig.subplots_adjust(left=0.030, right=0.988, top=0.905, bottom=0.175)
+    # The panels are aspect-equal and HEIGHT-limited, so map width = (x-range /
+    # y-range) x panel height: every line of footer and every bit of title margin
+    # comes straight off the width of the picture. Four footer lines, not five.
+    fig.subplots_adjust(left=0.030, right=0.988, top=0.912, bottom=0.140)
 
     fig.canvas.draw()
     for panel, npar in ((p_i, n_params), (p_o, 0)):

@@ -275,10 +275,15 @@ def run(arm, plat, scene, sup=None, jitter=0.0, horizon_s=90.0, record=None,
 
 
 # ------------------------------------------------------------------ what was configured
-def commissioning_ledger(plat):
+def commissioning_ledger(plat, zones=None):
     """Every hand-set number the industrial arm actually uses, and what an integrator
     has to know about THIS site to choose it. These are not illustrative -- each one
-    is read straight out of the configuration the simulated machine runs on."""
+    is read straight out of the configuration the simulated machine runs on.
+
+    `zones` MUST be the zones of the route being shown. It defaulted to this module's
+    own three, which silently over-counted by one on any route with fewer marked
+    openings -- the final video claimed 14 parameters where it configures 13.
+    """
     c, r = plat.cbf, plat.robot
     prot = c.d_hard + d_stop(c.sigma * COMMISSIONED, c.tau, c.a_brake)
     return [
@@ -307,7 +312,7 @@ def commissioning_ledger(plat):
     ] + [(f"zone {z.label} speed / extent",
           f"{z.v:.2f} m/s over {z.x1 - z.x0:.1f} m",
           "corner sight line surveyed, entry set by braking distance")
-         for z in site_zones(plat)]
+         for z in (site_zones(plat) if zones is None else zones)]
 
 
 # ------------------------------------------------------------------------ battery
