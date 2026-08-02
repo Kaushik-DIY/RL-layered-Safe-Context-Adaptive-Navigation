@@ -65,6 +65,9 @@ ros2_ws/log/
 *.bag
 rosbags/
 
+# Personal reference notes: kept in the working copy, never in the repo.
+docs/IMPLEMENTATION.md
+
 # --- Deliberately not tracked ---
 # (README.md was excluded for the initial commit; it is the project's front door now.)
 docs/project_summary_CV.md
