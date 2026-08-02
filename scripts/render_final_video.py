@@ -606,8 +606,8 @@ def _summary_card(fig, arrive, summary, batt, n_params):
     art.append(fig.text(L, 0.880, "It reads the room, not a rulebook.",
                         fontsize=31, weight="bold", color="#22252a", zorder=41))
     art.append(fig.text(L, 0.824,
-                        "31 m run, the same pedestrian pass twice - once where stepping "
-                        "aside is safe, once where it is not",
+                        "Hand-commissioned industrial AMR against the learned "
+                        "supervisor, on an identical shared-aisle route",
                         fontsize=11.5, color="#6b7079", zorder=41))
     art.append(fig.add_artist(Rectangle((L, 0.775), 0.86, 0.003,
                                         transform=fig.transFigure, fc="#d5d8dd",
