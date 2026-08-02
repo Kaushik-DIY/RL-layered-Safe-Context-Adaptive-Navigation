@@ -10,8 +10,8 @@ each cue on the ROBOT'S POSITION. That reproduces the industrial 2D scenarios'
 `("robot_x_ge", x)` trigger (core/sim2d/scenarios.py) and makes the A/B fair: the hazard
 is presented at the SAME distance in both runs, so only approach speed differs.
 
-All cue geometry lives in core.demo.showcase_scene -- shared with the world generator and
-the offline verifier, so it cannot drift.
+All cue geometry lives in core.demo.final_route -- shared with the world generator and
+the offline gate, so it cannot drift.
 """
 from __future__ import annotations
 
@@ -24,30 +24,18 @@ from core.demo.sdf import safe_name
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 
-def _load_scene(name):
-    """`scene:=final` drives the final route; anything else keeps the showcase, so the
-    previously-recorded demo still launches unchanged."""
-    if name == "final":
-        from core.demo.aisle_scene import should_fire, staged_pose, walk_path
-        from core.demo.final_route import CUES
-        return CUES, should_fire, staged_pose, walk_path
-    from core.demo.showcase_scene import (CUES, should_fire, staged_pose,  # noqa: E501
-                                          walk_path)
-    return CUES, should_fire, staged_pose, walk_path
+from core.demo.aisle_scene import should_fire, staged_pose, walk_path
+from core.demo.final_route import CUES
 
 
 class SceneDirectorNode(Node):
     def __init__(self):
         super().__init__("scene_director_node")
-        self.declare_parameter("scene", "showcase")
         self.declare_parameter("rate_hz", 50.0)   # match libgazebo_ros_state so pose steps stay small
         self.declare_parameter("bob_amplitude", 0.035)   # fake walk cycle
         self.declare_parameter("bob_hz", 1.9)
         self.declare_parameter("enabled", True)
 
-        global CUES, should_fire, staged_pose, walk_path
-        CUES, should_fire, staged_pose, walk_path = _load_scene(
-            str(self.get_parameter("scene").value))
         self._fired = [None] * len(CUES)
         self._state = None            # (x, v)
         self._t0 = None

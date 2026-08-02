@@ -53,9 +53,9 @@ zone rows from the *commissioning* route's three cross-aisles, so this video cla
 where it configures 13 — station C is plain aisle and has nothing to mark. It now takes the
 zones of the route being shown. Every additional junction adds a row, which is the point.
 
-This supersedes `commissioning_demo` as the presentation cut. The earlier two are kept:
-`commissioning_demo` is the pure commissioning argument on a 3.5 m aisle, and
-`headon_demo` is the three-way diagnostic that established the lateral behaviour.
+This is the presentation cut. Earlier demos (a commissioning-only argument on a 3.5 m
+aisle, and a three-way head-on diagnostic) were superseded by this route and removed;
+they are in the git history if the working is ever needed.
 
 ## The route
 
@@ -113,9 +113,13 @@ the mapped jambs (`posts`) that mark every opening. Nothing marked, nothing conf
 returns `None` when the machine should not use the width, which leaves the policy's own
 request untouched.
 
-This is the safe half of the finding in [[headon_demo]]: the trained policy pins
-`d_margin` at 0.30 m and never asks for room, but asking unconditionally would be wrong
-too. The map is what makes the difference decidable.
+**This is the safe half of a measured policy gap.** Driven at a fixed `d_margin`, the same
+stack offsets 0.02 m at 0.30, 0.36 m at 1.00 and 1.32 m at 2.00 — and the widest setting is
+also the *quickest*, because going round costs less than slowing. The trained policy
+nevertheless pins `d_margin` at 0.30 for a whole encounter, against an action-box range of
+0.1–2.0: it never asks. Closing that is a training question, not an architecture one.
+But asking unconditionally would be wrong too — beside an open cross-aisle the room is not
+real. The map is what makes the difference decidable.
 
 ## Scene plumbing
 

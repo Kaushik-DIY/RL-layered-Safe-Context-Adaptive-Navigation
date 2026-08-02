@@ -120,3 +120,31 @@ until the `goal reached; holding station` log line — the recorder keeps writin
 and **the recording length is not the mission time** (a healthy 31.8 s run reads as 77 s of
 file). `check_final_gazebo.py` measures to arrival for exactly this reason, including the
 acceleration statistics.
+
+## Clean up after a run, or the next one lies to you
+
+`timeout -s INT` on the launch parent does **not** reliably take the node processes with
+it. They survive, keep spinning, and starve the next run. Measured: six orphaned nodes
+from earlier experiments left the machine at load 11 on 8 cores, and the next run
+stuttered — the robot crawled 4 m in 38 s with its speed cap unrestricted at 1.20 m/s,
+which looks exactly like a control bug and is not one. A stale `gzserver` also holds port
+11345, so the next `gzserver` dies with exit 255 and every node then reads the *previous*
+run's odometry.
+
+Before and after each run:
+
+```bash
+for c in human_tracker_n rl_supervisor_n field_viz_node scene_director_ cbf_node \
+         mpc_node demo_recorder_ gzserver gzclient; do
+  pids=$(ps -eo pid,comm --no-headers | awk -v c="$c" '$2==c {print $1}')
+  [ -n "$pids" ] && kill -9 $pids
+done
+```
+
+Use `pkill -x` (exact process name), never `pkill -f` — the `-f` form matches the whole
+command line, which includes the wrapper script running the cleanup, and kills it.
+
+One more flake worth knowing: the goal is published with `ros2 topic pub -1`, a single
+message. If a subscriber has not finished discovery it misses it silently — the launch
+looks healthy and the robot simply never moves. `goal_delay:=12` is comfortable; if
+`mpc_controller` never logs `goal set`, that is what happened.

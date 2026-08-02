@@ -10,7 +10,7 @@ Subscribes to everything the story needs and writes one row per tick:
   * /navrl/humans     -> tracked workers, so clearance can be plotted (respects occlusion:
                          a worker still up the aisle is genuinely absent here)
 
-scripts/render_showcase_video.py turns two of these CSVs into the side-by-side panel.
+scripts/check_final_gazebo.py reads this CSV and checks the run against the 2D gate.
 """
 from __future__ import annotations
 

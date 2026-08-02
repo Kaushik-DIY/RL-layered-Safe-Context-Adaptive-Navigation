@@ -89,7 +89,7 @@ def generate_launch_description() -> LaunchDescription:
                parameters=[industrial, {"walls": WALLS.ravel().tolist()}])
     director = Node(package="navrl_nodes", executable="scene_director_node",
                     name="scene_director", output="screen",
-                    parameters=[{"use_sim_time": True, "scene": "final"}])
+                    parameters=[{"use_sim_time": True}])
     # rviz is where the SAFETY layer is legible: speed differences read badly in 3D
     # (1.2 vs 0.6 m/s looks similar on camera) but the protective field does not, because
     # it scales with v^2. Run it alongside Gazebo rather than instead of it.

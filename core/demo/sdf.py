@@ -1,8 +1,7 @@
 """SDF building blocks for the generated Gazebo worlds.
 
-Canonical home for the AMR model and the worker model. `scripts/gen_showcase_world.py`
-predates this file and keeps its own copies; anything new imports from here so the
-physics fixes below cannot be re-broken by copy-paste.
+Canonical home for the AMR model and the worker model. Every generated world imports from
+here, so the physics fixes below cannot be re-broken by copy-paste into a second copy.
 
 THE FOUR THINGS THAT COST A DEMO EACH, all encoded below -- do not "tidy" them away:
 
